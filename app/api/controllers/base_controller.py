@@ -4,8 +4,16 @@ from fastapi import APIRouter, Depends, HTTPException, Form, Request
 # from src.auth.services.user_service import UserService
 # from src.dependencies import UOWDep
 
-from app.utils import MessageClient
-from app.dependencies import MessageClientDep, UserStatesDep, ValidatedUsersDep, ValidClientIdsDep
+
+from app.dependencies import (
+    BotMenuServiceDep,
+    UserStatesDep,
+    UOWDep,
+    UserCacheDep,
+    UserStates
+)
+from app.api.dtos.user_dtos import UserDTO
+from app.api.services.user_service import UserService
 from app.config.logger_settings import get_logger
 from app.config.project_config import project_settings
 
@@ -15,73 +23,120 @@ logger = get_logger("base_controller")
 
 router = APIRouter(tags=["Base"])
 
-# @router.post("/create-user", response_model=UserDTO)
-# async def create_user(uow: UOWDep, user_data: CreateUserDTO):
-#     result: UserDTO = await UserService().create_user(
-#         uow, user_data
-#     )
-#     return result
-
 
 @router.post("/message", response_model=None)
 async def reply(
     request: Request,
-    message_client: MessageClientDep,    # MessageClient = Depends(get_message_client)
-    user_states: UserStatesDep,    # user_states = Depends(get_user_states)
-    validated_users: ValidatedUsersDep,    # validated_users = Depends(get_validated_users)
-    valid_client_ids: ValidClientIdsDep,    # valid_client_ids = Depends(get_valid_client_ids)
+    uow: UOWDep,
+    bot_menu_service: BotMenuServiceDep,
+    user_states: UserStatesDep,
+    user_cache: UserCacheDep,
     Body: str = Form()
 ):
     form_data = await request.form()
     whatsapp_number = form_data['From'].split("whatsapp:")[-1]
     user_message = Body.strip()
 
-    if whatsapp_number not in user_states:
-        user_states[whatsapp_number] = "awaiting_id"
-        await message_client.send_message(
-            whatsapp_number,
-            "👋 Hi, your results are ready!\nPlease enter your Client ID to validate your personal chat.")
-        return ""
-    
-    state = user_states[whatsapp_number]
-    
-    if state == "awaiting_id":
-        if user_message in valid_client_ids:
-            validated_users.add(whatsapp_number)
-            user_states[whatsapp_number] = "menu"
-            await message_client.send_message(
-                whatsapp_number, "✅ Verification successful! Choose an option:"
-            )
-            await send_menu(whatsapp_number, message_client)
+    if whatsapp_number not in user_cache:
+        try:
+            user = await UserService().get_user_by_phone_and_client_id(uow, whatsapp_number, int(user_message))
+        except Exception as e:
+            logger.warning(f"Mistake during check user with phone: {whatsapp_number} - {str(e)}")
+            user = None
+
+        if user:
+            user_cache[whatsapp_number] = user
+            logger.info(f"Save user with ClientID: {user.client_id} in cache")
         else:
-            await message_client.send_message(whatsapp_number, "❌ Invalid Client ID. Please try again:")
-    elif state == "menu":
-        await handle_main_menu(whatsapp_number, user_message, message_client)
-    
+            logger.info(f"User with ClientID: {user_message} not found! WhatsApp number: {whatsapp_number}")
+            await bot_menu_service.send_message(
+                whatsapp_number,
+                "👋 Hi, your results are ready!\nPlease enter your Client ID to validate your personal chat."
+            )
+            return ""
+
+    user: UserDTO = user_cache[whatsapp_number]
+    logger.info(f"User retrieved from cache: {user}")
+    state = user_states.get(whatsapp_number, UserStates.AWAITING_VERIFICATION)
+    logger.info(f"User state: {state}")
+
+    match state:
+        case UserStates.AWAITING_VERIFICATION:
+            if user.verified:
+                user_states[whatsapp_number] = UserStates.MAIN_MENU
+                await bot_menu_service.send_main_menu(whatsapp_number)
+
+            elif user_message == user.client_id and user.phone == whatsapp_number:
+                updated_user = await UserService().verify_user(uow, user.id)
+                user_cache[whatsapp_number] = updated_user
+                user_states[whatsapp_number] = UserStates.MAIN_MENU
+                await bot_menu_service.send_message(
+                    whatsapp_number, "✅ Verification successful! Choose an option:"
+                )
+                await bot_menu_service.send_main_menu(whatsapp_number)
+            else:
+                await bot_menu_service.send_message(
+                    whatsapp_number, "❌ Invalid Client ID. Please try again:"
+                )
+
+        case UserStates.MAIN_MENU:
+            match user_message:
+                case "1":
+                    user_states[whatsapp_number] = UserStates.MY_RESULT_MENU
+                    await bot_menu_service.send_my_results_menu(whatsapp_number, user.pdf_result_link)
+                case "2":
+                    user_states[whatsapp_number] = UserStates.MY_RESTRICTIONS_MENU
+                    await bot_menu_service.send_my_restrictions_menu(whatsapp_number)
+                case "3":
+                    user_states[whatsapp_number] = UserStates.PERSONALIZED_RECIPES_MENU
+                    await bot_menu_service.send_personalized_recipes_menu(whatsapp_number)
+                case "4":
+                    user_states[whatsapp_number] = UserStates.NUTRITION_ASSISTANT_MENU
+                    await bot_menu_service.send_personal_nutrition_assistant_menu(whatsapp_number)
+                case _:
+                    await bot_menu_service.send_message(
+                        whatsapp_number, "❌ Invalid option. Please choose from the menu:"
+                    )
+                    await bot_menu_service.send_main_menu(whatsapp_number)
+
+        case UserStates.MY_RESULT_MENU:
+            match user_message:
+                case "0":
+                    user_states[whatsapp_number] = UserStates.MAIN_MENU
+                    await bot_menu_service.send_main_menu(whatsapp_number)
+                case _:
+                    await bot_menu_service.send_message(
+                        whatsapp_number, "❌ Invalid option. Press 0 to go back."
+                    )
+
+        case UserStates.MY_RESTRICTIONS_MENU:
+            match user_message:
+                case "0":
+                    user_states[whatsapp_number] = UserStates.MAIN_MENU
+                    await bot_menu_service.send_main_menu(whatsapp_number)
+                case _:
+                    await bot_menu_service.send_message(
+                        whatsapp_number, "❌ Invalid option. Press 0 to go back."
+                    )
+
+        case UserStates.PERSONALIZED_RECIPES_MENU:
+            match user_message:
+                case "0":
+                    user_states[whatsapp_number] = UserStates.MAIN_MENU
+                    await bot_menu_service.send_main_menu(whatsapp_number)
+                case _:
+                    await bot_menu_service.send_message(
+                        whatsapp_number, "❌ Invalid option. Press 0 to go back."
+                    )
+
+        case UserStates.NUTRITION_ASSISTANT_MENU:
+            match user_message:
+                case "0":
+                    user_states[whatsapp_number] = UserStates.MAIN_MENU
+                    await bot_menu_service.send_main_menu(whatsapp_number)
+                case _:
+                    await bot_menu_service.send_message(
+                        whatsapp_number, "❌ Invalid option. Press 0 to go back."
+                    )
+
     return ""
-
-async def send_menu(whatsapp_number, message_client):
-    menu_text = (
-        "*Main Menu:*\n"
-        "1️⃣ View My Results\n"
-        "2️⃣ See My Restrictions\n"
-        "3️⃣ Personalized Recipes\n"
-        "4️⃣ Personal Nutrition Assistant\n"
-        "0️⃣ 🔝 Main Menu"
-    )
-    await message_client.send_message(whatsapp_number, menu_text)
-
-async def handle_main_menu(whatsapp_number, user_message, message_client):
-    if user_message == "0":
-        await send_menu(whatsapp_number)
-    else:
-        responses = {
-            "1": "🛠 View My Results - In development...",
-            "2": "🛠 See My Restrictions - In development...",
-            "3": "🛠 Personalized Recipes - In development...",
-            "4": "🛠 Personal Nutrition Assistant - In development...",
-        }
-        response = responses.get(user_message, "❌ Invalid option. Please choose from the menu:")
-        await message_client.send_message(whatsapp_number, response)
-        if response == "❌ Invalid option. Please choose from the menu:":
-            await send_menu(whatsapp_number)

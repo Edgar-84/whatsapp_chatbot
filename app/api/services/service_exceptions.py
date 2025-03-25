@@ -1,0 +1,2 @@
+class UserServiceException(Exception):
+    pass

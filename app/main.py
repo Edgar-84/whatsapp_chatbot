@@ -4,52 +4,52 @@ from fastapi import FastAPI, Request
 from contextlib import asynccontextmanager
 
 from app.routes import get_apps_router
-from app.utils import MessageClient
+from app.utils.unitofwork import IUnitOfWork, UnitOfWork
+from app.wa_hooks.message_hooks import MessageClient
+from app.wa_hooks.bot_menu_service import BotMenuService
 from app.config.logger_settings import get_logger
 from app.config.project_config import project_settings
+from app.database.db import get_supabase_client
 
 
 logger = get_logger("main")
-# app = FastAPI()
 
 
+def create_uow_client() -> IUnitOfWork:
+    logger.info("Creating [UnitOfWork]...")
+    supabase_client = get_supabase_client()
+    return UnitOfWork(supabase_client)
 
-def get_message_client() -> MessageClient:
-    logger.info("Creating [MessageClient]...")
-    return MessageClient(
+
+def get_bot_menu_service() -> BotMenuService:
+    logger.info("Creating [BotMenuService]...")
+    message_client = MessageClient(
         account_sid=project_settings.account_sid,
         auth_token=project_settings.auth_token,
         twilio_number=project_settings.twilio_number
     )
+    return BotMenuService(message_client)
 
 def get_user_states() -> dict:
     logger.info("Creating [UserStates]...")
     user_states = {}  # {'phone_number': 'awaiting_id' / 'verified' / 'menu'}
     return user_states
 
-def get_validated_users() -> set:
-    logger.info("Creating [ValidatedUsers]...")
-    validated_users = set()
-    return validated_users
+def get_user_cache() -> dict:
+    logger.info("Creating [UserCache]...")
+    user_cache = {}
+    return user_cache
 
-def get_valid_client_ids() -> set:
-    logger.info("Creating [ValidClientIds]...")
-    valid_client_ids = {"111", "222", "333"}
-    return valid_client_ids
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Start APP"""
 
     logger.info(f"Starting app ...")
-    app.state.message_client = get_message_client()
+    app.state.bot_menu_service = get_bot_menu_service()
     app.state.user_states = get_user_states()
-    app.state.validated_users = get_validated_users()
-    app.state.valid_client_ids = get_valid_client_ids()
-    # Initialize UOW
-    # supabase_client = get_supabase_client()
-    # uow = UnitOfWork(supabase_client)
-    # app.state.uow = uow
+    app.state.user_cache = get_user_cache()
+    app.state.uow = create_uow_client()
 
     yield
 
