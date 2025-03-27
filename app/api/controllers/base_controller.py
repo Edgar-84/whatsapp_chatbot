@@ -1,10 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Form, Request
 
-# from src.auth.dtos.user_dtos import UserDTO, CreateUserDTO
-# from src.auth.services.user_service import UserService
-# from src.dependencies import UOWDep
-
-
+from app.services.ascii_service import ASCIIService
 from app.dependencies import (
     BotMenuServiceDep,
     UserStatesDep,
@@ -86,7 +82,17 @@ async def reply(
                     await bot_menu_service.send_my_results_menu(whatsapp_number, user.pdf_result_link)
                 case "2":
                     user_states[whatsapp_number] = UserStates.MY_RESTRICTIONS_MENU
-                    await bot_menu_service.send_my_restrictions_menu(whatsapp_number)
+                    # TODO get restrictions from database
+                    ascii_result_link = user.ascii_result_link
+                    if ascii_result_link:
+                        file_id = ascii_result_link.split("/d/")[1].split("/view")[0]
+                        logger.info(f"File ID: {file_id}")
+                        restrictions_data = await ASCIIService.process_csv(file_id)
+                        high_sensitivity = restrictions_data["high_sensitivity"]
+                        low_sensitivity = restrictions_data["low_sensitivity"]
+                        await bot_menu_service.send_my_restrictions_menu(whatsapp_number, high_sensitivity, low_sensitivity)
+                    else:
+                        await bot_menu_service.send_my_restrictions_menu(whatsapp_number)
                 case "3":
                     user_states[whatsapp_number] = UserStates.PERSONALIZED_RECIPES_MENU
                     await bot_menu_service.send_personalized_recipes_menu(whatsapp_number)

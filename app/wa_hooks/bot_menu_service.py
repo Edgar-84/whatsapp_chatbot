@@ -28,13 +28,26 @@ class BotMenuService:
         )   
         await self.message_client.send_message(whatsapp_number, menu_text)
     
-    async def send_my_restrictions_menu(self, whatsapp_number: str):
-        menu_text = (
-            "🛠 See My Restrictions - In development...\n"
-            "0️⃣ 🔝 Main Menu"
-        )
-        await self.message_client.send_message(whatsapp_number, menu_text)
-    
+    async def send_my_restrictions_menu(self, whatsapp_number: str, high_sensitivity: list = None, low_sensitivity: list = None):
+        if not high_sensitivity and not low_sensitivity:
+            menu_text = (
+                f"*See My Restrictions*\n"
+                "No restrictions found for this user, please contact support.\n"
+                "0️⃣ 🔝 Main Menu"
+            )
+            await self.message_client.send_message(whatsapp_number, menu_text)
+        
+        else:
+            high_sensitivity_info = ", ".join([f"{r}" for r in high_sensitivity])
+            low_sensitivity_info = ", ".join([f"{r}" for r in low_sensitivity])
+            menu_text = (
+                f"*See My Restrictions*\n"
+                f"_High Sensitivity_:\n{high_sensitivity_info}\n\n"
+                f"_Low Sensitivity_:\n{low_sensitivity_info}\n\n"
+                "0️⃣ 🔝 Main Menu"
+            )
+            await self.message_client.send_message(whatsapp_number, menu_text)
+        
     async def send_personalized_recipes_menu(self, whatsapp_number: str):
         menu_text = (
             "🛠 Personalized Recipes - In development...\n"
