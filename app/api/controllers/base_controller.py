@@ -9,9 +9,10 @@ from app.dependencies import (
     UserStates
 )
 from app.api.dtos.user_dtos import UserDTO
+from app.api.dtos.food_dtos import FoodDTO
 from app.api.services.user_service import UserService
+from app.api.services.food_service import FoodService
 from app.config.logger_settings import get_logger
-from app.config.project_config import project_settings
 
 
 logger = get_logger("base_controller")
@@ -82,15 +83,23 @@ async def reply(
                     await bot_menu_service.send_my_results_menu(whatsapp_number, user.pdf_result_link)
                 case "2":
                     user_states[whatsapp_number] = UserStates.MY_RESTRICTIONS_MENU
-                    # TODO get restrictions from database
                     ascii_result_link = user.ascii_result_link
+
                     if ascii_result_link:
                         file_id = ascii_result_link.split("/d/")[1].split("/view")[0]
                         logger.info(f"File ID: {file_id}")
                         restrictions_data = await ASCIIService.process_csv(file_id)
-                        high_sensitivity = restrictions_data["high_sensitivity"]
-                        low_sensitivity = restrictions_data["low_sensitivity"]
-                        await bot_menu_service.send_my_restrictions_menu(whatsapp_number, high_sensitivity, low_sensitivity)
+                        
+                        high_sensitivity_foods_codes = restrictions_data["high_sensitivity"]
+                        low_sensitivity_foods_codes = restrictions_data["low_sensitivity"]
+                        # TODO create one request instead of two, and filter results on hight and low foods
+                        high_sensitivity_foods: list[FoodDTO] = await FoodService().get_foods_by_list_lab_codes(uow, high_sensitivity_foods_codes)
+                        low_sensitivity_foods: list[FoodDTO] = await FoodService().get_foods_by_list_lab_codes(uow, low_sensitivity_foods_codes)
+                        high_sensitivity_foods = [food.name for food in high_sensitivity_foods]
+                        low_sensitivity_foods = [food.name for food in low_sensitivity_foods]
+                        logger.info(f"High sensitivity foods: {high_sensitivity_foods}")
+                        logger.info(f"Low sensitivity foods: {low_sensitivity_foods}")
+                        await bot_menu_service.send_my_restrictions_menu(whatsapp_number, high_sensitivity_foods, low_sensitivity_foods)
                     else:
                         await bot_menu_service.send_my_restrictions_menu(whatsapp_number)
                 case "3":

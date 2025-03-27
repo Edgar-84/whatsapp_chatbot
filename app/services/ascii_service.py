@@ -60,12 +60,12 @@ class ASCIIService:
                         if str(score)[0] == "1":
                             product = data_dict.get("rbio_code")
                             restrictions_dict["all_restrictions"].append(data_dict)
-                            restrictions_dict["low_sensitivity"].append(product)
+                            restrictions_dict["low_sensitivity"].append(product.replace("G", "").replace("GK", ""))
 
                         elif str(score)[0] == "2":
                             product = data_dict.get("rbio_code")
                             restrictions_dict["all_restrictions"].append(data_dict)
-                            restrictions_dict["high_sensitivity"].append(product)
+                            restrictions_dict["high_sensitivity"].append(product.replace("G", "").replace("GK", ""))
 
                 except Exception as ex:
                     logger.warning(f"❌ Error processing row: {ex}")

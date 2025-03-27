@@ -2,13 +2,12 @@ from abc import ABC, abstractmethod
 
 from app.database.supabase_client import SupabaseClient
 from app.api.repositories.user_repository import UserRepository
-# from app.user_service.repositories import PlanRepository, SubscriptionRepository
+from app.api.repositories.foods_repository import FoodRepository
 
 
 class IUnitOfWork(ABC):
     user_repository: UserRepository
-    # plan_repository: PlanRepository
-    # subscription_repository: SubscriptionRepository
+    food_repository: FoodRepository
 
     @abstractmethod
     async def __aenter__(self):
@@ -31,8 +30,7 @@ class UnitOfWork(IUnitOfWork):
     def __init__(self, supabase_client: SupabaseClient):
         self.client = supabase_client
         self.user_repository = UserRepository(self.client)
-        # self.plan_repository = PlanRepository(self.client)
-        # self.subscription_repository = SubscriptionRepository(self.client)
+        self.food_repository = FoodRepository(self.client)
 
     async def __aenter__(self):
         # Here we don't have to initialize a session, as SupabaseClient is the connection.

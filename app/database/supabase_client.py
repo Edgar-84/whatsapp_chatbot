@@ -89,8 +89,11 @@ class SupabaseClient(ISupabaseClient):
         try:
            db_query = self._client.table(table).select("*")
            for key, value in query.items():
-               db_query = db_query.eq(key, value)
-           
+               if isinstance(value, dict) and "in" in value:
+                   db_query = db_query.in_(key, value["in"])
+               else:
+                   db_query = db_query.eq(key, value)
+
            result = db_query.execute()
            return result.data
 
