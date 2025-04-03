@@ -15,6 +15,8 @@ class UserStates(str, Enum):
     MY_RESULT_MENU = "my_result_menu"  # View My Results
     MY_RESTRICTIONS_MENU = "my_restrictions_menu"  # See My Restrictions
     PERSONALIZED_RECIPES_MENU = "personalized_recipes_menu"  # Personalized Recipes
+    CHOICE_MEAL_TYPE_MENU = "choice_meal_type_menu"  # After choose Meal Type
+    SHOW_PERSONALIZED_RECIPES_MENU = "show_personalized_recipes_menu"  # When return fit recipes
     NUTRITION_ASSISTANT_MENU = "nutrition_assistant_menu"  # Personal Nutrition Assistant
 
 

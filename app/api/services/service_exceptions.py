@@ -4,3 +4,11 @@ class UserServiceException(Exception):
 
 class FoodServiceException(Exception):
     pass
+
+
+class MealTypeServiceException(Exception):
+    pass
+
+
+class RecipesServiceException(Exception):
+    pass

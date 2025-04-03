@@ -26,7 +26,7 @@ class ASCIIService:
                     raise Exception(f"Mistake of loading: {response.status}")
 
     @classmethod
-    async def process_csv(cls, file_id: str) -> dict:
+    async def process_csv(cls, file_id: str) -> tuple[list[str], list[str]]:
         """
         Process CSV data from remote Google Drive file
         """
@@ -69,5 +69,4 @@ class ASCIIService:
 
                 except Exception as ex:
                     logger.warning(f"❌ Error processing row: {ex}")
-
-        return restrictions_dict
+        return restrictions_dict["high_sensitivity"], restrictions_dict["low_sensitivity"]
