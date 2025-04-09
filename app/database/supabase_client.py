@@ -2,7 +2,7 @@ from threading import Lock
 from typing import Any, List, Dict
 from abc import ABC, abstractmethod
 from pydantic import BaseModel
-from supabase import create_client, Client
+from supabase import AsyncClient, acreate_client
 
 from app.config.logger_settings import get_logger
 
@@ -36,7 +36,7 @@ class ISupabaseClient(ABC):
 class SupabaseClient(ISupabaseClient):
     _instance = None
     _lock = Lock()
-    _client: Client = None
+    _client: AsyncClient = None
     _logger = get_logger("supabase_client")
 
     def __new__(cls, *args, **kwargs):
@@ -46,39 +46,33 @@ class SupabaseClient(ISupabaseClient):
             return cls._instance
 
     def __init__(self, settings: SupabaseSettings = None):
-        if self._client is not None:
-            return
-            
-        if settings is None:
-            raise ValueError("Settings are required for initialization")
-            
-        with self._lock:
-            if not self._client:
-                self._logger.info("Initializing Supabase client")
-                try:
-                    self._client = create_client(
-                        supabase_url=settings.url,
-                        supabase_key=settings.key,
-                    )
-                    self._logger.info("Supabase client initialized successfully")
-                except Exception as e:
-                    self._logger.error(f"Failed to initialize Supabase client: {e}")
-                    raise
+        pass
 
     @classmethod
-    def initialize(cls, settings: SupabaseSettings) -> None:
-       if not cls._instance:
-           cls._instance = cls(settings)
+    async def initialize(cls, settings: SupabaseSettings) -> None:
+        if not cls._instance:
+            cls._instance = SupabaseClient(settings)
+        if not cls._instance._client:
+            cls._logger.info("Initializing Supabase client")
+            try:
+                cls._instance._client = await acreate_client(
+                    supabase_url=settings.url,
+                    supabase_key=settings.key,
+                )
+                cls._logger.info("Supabase client initialized successfully")
+            except Exception as e:
+                cls._logger.error(f"Failed to initialize Supabase client: {e}")
+                raise
 
     @classmethod
-    def get_client(cls):
+    async def get_client(cls) -> AsyncClient:
         if not cls._instance:
            raise Exception("Client not initialized")
         return cls._instance._client
 
     async def create(self, table: str, data: dict) -> Dict[str, Any]:
         try:
-           result = self._client.table(table).insert(data).execute()
+           result = await self._client.table(table).insert(data).execute()
            return result.data[0]
 
         except Exception as e:
@@ -94,7 +88,7 @@ class SupabaseClient(ISupabaseClient):
                else:
                    db_query = db_query.eq(key, value)
 
-           result = db_query.execute()
+           result = await db_query.execute()
            return result.data
 
         except Exception as e:
@@ -107,7 +101,7 @@ class SupabaseClient(ISupabaseClient):
            for key, value in query.items():
                db_query = db_query.eq(key, value)
            
-           result = db_query.execute()
+           result = await db_query.execute()
            return result.data[0]
 
         except Exception as e:
@@ -120,7 +114,7 @@ class SupabaseClient(ISupabaseClient):
            for key, value in query.items():
                db_query = db_query.eq(key, value)
            
-           result = db_query.execute()
+           result = await db_query.execute()
            return bool(result.data)
 
         except Exception as e:
@@ -142,7 +136,7 @@ class SupabaseClient(ISupabaseClient):
                 else:
                     db_query = db_query.eq(filter_item['column'], filter_item['value'])
             
-            result = db_query.execute()
+            result = await db_query.execute()
             return result.data
 
         except Exception as e:

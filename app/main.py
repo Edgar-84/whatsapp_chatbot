@@ -10,14 +10,20 @@ from app.wa_hooks.bot_menu_service import BotMenuService
 from app.config.logger_settings import get_logger
 from app.config.project_config import project_settings
 from app.database.db import get_supabase_client
+from app.services.rag_service import AskRagForRecipe
 
 
 logger = get_logger("main")
 
 
-def create_uow_client() -> IUnitOfWork:
+def create_rag_service(supabase_client) -> AskRagForRecipe:
+    logger.info("Creating [RagService]...")
+    openai_key = project_settings.OPENAI_API_KEY
+    return AskRagForRecipe(openai_key, supabase_client, project_settings.recipes_rag_csv_path)
+
+
+def create_uow_client(supabase_client) -> IUnitOfWork:
     logger.info("Creating [UnitOfWork]...")
-    supabase_client = get_supabase_client()
     return UnitOfWork(supabase_client)
 
 
@@ -46,15 +52,19 @@ async def lifespan(app: FastAPI):
     """Start APP"""
 
     logger.info(f"Starting app ...")
+    supabase_client = await get_supabase_client()
     app.state.bot_menu_service = get_bot_menu_service()
     app.state.user_states = get_user_states()
     app.state.user_cache = get_user_cache()
-    app.state.uow = create_uow_client()
+    app.state.uow = create_uow_client(supabase_client)
+    sup_client = await supabase_client.get_client()
+    app.state.rag_service = create_rag_service(sup_client)
 
     yield
 
     # Code for finish app (shutdown)
     app.state.uow = None
+    app.state.rag_service = None
     logger.info("Shutting down app...")
 
 
