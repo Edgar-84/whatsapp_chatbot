@@ -35,7 +35,7 @@ class BotMenuService:
         menu_text = (
             f"*View My Results*\n\n"
             f"Here is your test result PDF:\n{result_link}\n\n"
-            "0️⃣ 🔝 Main Menu"
+            # "0️⃣ 🔝 Main Menu"
         )   
         await self.message_client.send_message(whatsapp_number, menu_text)
     
@@ -44,7 +44,7 @@ class BotMenuService:
             menu_text = (
                 f"*See My Restrictions*\n\n"
                 "No restrictions found for this user, please contact support.\n"
-                "0️⃣ 🔝 Main Menu"
+                # "0️⃣ 🔝 Main Menu"
             )
             await self.message_client.send_message(whatsapp_number, menu_text)
         
@@ -56,7 +56,7 @@ class BotMenuService:
                 "🚫 Based on your IgG test, here are the foods you should avoid:\n"
                 f"_High Sensitivity_:\n{high_sensitivity_info}\n\n"
                 f"_Low Sensitivity_:\n{low_sensitivity_info}\n\n"
-                "0️⃣ 🔝 Main Menu"
+                # "0️⃣ 🔝 Main Menu"
             )
             await self.message_client.send_message(whatsapp_number, menu_text)
     
@@ -135,7 +135,7 @@ class BotMenuService:
         menu_text = (
             "*Would you like to get recipe suggestions based on your results?*\n\n"
             "1️⃣ Yes, show me recipes\n"
-            "2️⃣ 🔝 No, return to Main Menu\n"
+            "0️⃣ 🔝 No, return to Main Menu\n"
         )
         await self.message_client.send_message(whatsapp_number, menu_text)
 
@@ -190,6 +190,7 @@ class BotMenuService:
     
     async def send_menu_liked_recipe(self, whatsapp_number: str):
         menu_text = (
+            "Thanks for your review!\n"
             "*What would you like to do?*\n\n"
             "1️⃣ Generate Shopping List for Recipe\n"
             "0️⃣ 🔝 Back to Main Menu\n"
@@ -200,6 +201,6 @@ class BotMenuService:
         menu_text = (
             f"*Here’s your shopping list for {recipe_name}:*\n\n"
             f"{recipe_ingredients}\n\n"
-            "0️⃣ 🔝 Back to Main Menu\n"
+            # "0️⃣ 🔝 Back to Main Menu\n"
         )
         await self.message_client.send_message(whatsapp_number, menu_text)

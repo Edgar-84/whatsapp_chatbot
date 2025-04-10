@@ -12,3 +12,7 @@ class MealTypeServiceException(Exception):
 
 class RecipesServiceException(Exception):
     pass
+
+
+class RecipeRatingsServiceException(Exception):
+    pass

@@ -1,3 +1,4 @@
+import asyncio
 from fastapi import APIRouter, Depends, HTTPException, Form, Request
 
 from app.services.ascii_service import ASCIIService
@@ -12,10 +13,13 @@ from app.dependencies import (
 from app.api.dtos.recipe_user_preferences_dto import RecipeUserPreferencesDTO
 from app.api.dtos.user_dtos import UserDTO
 from app.api.dtos.food_dtos import FoodDTO
-from app.api.dtos.recipes_dtos import RecipeDTO
+from app.api.dtos.recipe_ratings_dtos import CreateRecipeRatingDTO
+# from app.api.dtos.recipes_dtos import RecipeDTO
+
 from app.api.services.user_service import UserService
 from app.api.services.food_service import FoodService
-from app.api.services.recipes_service import RecipesService
+# from app.api.services.recipes_service import RecipesService
+from app.api.services.recipe_ratings_service import RecipeRatingsService
 from app.config.logger_settings import get_logger
 
 
@@ -88,8 +92,11 @@ async def reply(
         case UserStates.MAIN_MENU:
             match user_message:
                 case "1":
-                    user_states[whatsapp_number] = UserStates.MY_RESULT_MENU
+                    # user_states[whatsapp_number] = UserStates.MY_RESULT_MENU
                     await bot_menu_service.send_my_results_menu(whatsapp_number, user.pdf_result_link)
+                    user_states[whatsapp_number] = UserStates.MAIN_MENU
+                    await asyncio.sleep(1.5)
+                    await bot_menu_service.send_main_menu(whatsapp_number)
 
                 case "2":
                     user_states[whatsapp_number] = UserStates.USER_WAITING_ANSWER # Set block for user message
@@ -98,7 +105,7 @@ async def reply(
 
                     if user_cache[whatsapp_number]["high_sensitivity_foods"] is not None and user_cache[whatsapp_number]["low_sensitivity_foods"] is not None:
                         logger.info(f" === Find Restrictions in User cache! ===")
-                        user_states[whatsapp_number] = UserStates.MY_RESTRICTIONS_MENU
+                        # user_states[whatsapp_number] = UserStates.MY_RESTRICTIONS_MENU
                         high_sensitivity_foods_names = [food.name for food in user_cache[whatsapp_number]["high_sensitivity_foods"]]
                         low_sensitivity_foods_names = [food.name for food in user_cache[whatsapp_number]["low_sensitivity_foods"]]
                         await bot_menu_service.send_my_restrictions_menu(
@@ -106,6 +113,9 @@ async def reply(
                             high_sensitivity_foods_names,
                             low_sensitivity_foods_names
                         )
+                        user_states[whatsapp_number] = UserStates.MAIN_MENU
+                        await asyncio.sleep(1.5)
+                        await bot_menu_service.send_main_menu(whatsapp_number)
 
                     elif ascii_result_link:
                         # TODO create util for work with getting restrictions info
@@ -126,12 +136,18 @@ async def reply(
                         low_sensitivity_foods_names = [food.name for food in low_sensitivity_foods]
                         logger.info(f"High sensitivity foods: {high_sensitivity_foods_names}")
                         logger.info(f"Low sensitivity foods: {low_sensitivity_foods_names}")
-                        user_states[whatsapp_number] = UserStates.MY_RESTRICTIONS_MENU
+                        # user_states[whatsapp_number] = UserStates.MY_RESTRICTIONS_MENU
                         await bot_menu_service.send_my_restrictions_menu(whatsapp_number, high_sensitivity_foods_names, low_sensitivity_foods_names)
+                        user_states[whatsapp_number] = UserStates.MAIN_MENU
+                        await asyncio.sleep(1.5)
+                        await bot_menu_service.send_main_menu(whatsapp_number)
 
                     else:
-                        user_states[whatsapp_number] = UserStates.MY_RESTRICTIONS_MENU
+                        # user_states[whatsapp_number] = UserStates.MY_RESTRICTIONS_MENU
                         await bot_menu_service.send_my_restrictions_menu(whatsapp_number)
+                        user_states[whatsapp_number] = UserStates.MAIN_MENU
+                        await asyncio.sleep(1.5)
+                        await bot_menu_service.send_main_menu(whatsapp_number)
 
                 case "3":
                     user_states[whatsapp_number] = UserStates.ASK_USER_WHANT_RECIPES
@@ -152,37 +168,39 @@ async def reply(
                     )
                     await bot_menu_service.send_main_menu(whatsapp_number)
 
-        case UserStates.MY_RESULT_MENU:
-            match user_message:
-                case "0":
-                    user_states[whatsapp_number] = UserStates.MAIN_MENU
-                    await bot_menu_service.send_main_menu(whatsapp_number)
-                case _:
-                    await bot_menu_service.send_message(
-                        whatsapp_number, "❌ Invalid option. Press 0 to go back."
-                    )
+        # case UserStates.MY_RESULT_MENU:
+        #     # TODO can be deleted state and this option
+        #     match user_message:
+        #         case "0":
+        #             user_states[whatsapp_number] = UserStates.MAIN_MENU
+        #             await bot_menu_service.send_main_menu(whatsapp_number)
+        #         case _:
+        #             await bot_menu_service.send_message(
+        #                 whatsapp_number, "❌ Invalid option. Press 0 to go back."
+        #             )
 
-        case UserStates.MY_RESTRICTIONS_MENU:
-            match user_message:
-                case "0":
-                    user_states[whatsapp_number] = UserStates.MAIN_MENU
-                    await bot_menu_service.send_main_menu(whatsapp_number)
-                case _:
-                    await bot_menu_service.send_message(
-                        whatsapp_number, "❌ Invalid option. Press 0 to go back."
-                    )
+        # case UserStates.MY_RESTRICTIONS_MENU:
+        # TODO can be deleted state and case
+        #     match user_message:
+        #         case "0":
+        #             user_states[whatsapp_number] = UserStates.MAIN_MENU
+        #             await bot_menu_service.send_main_menu(whatsapp_number)
+        #         case _:
+        #             await bot_menu_service.send_message(
+        #                 whatsapp_number, "❌ Invalid option. Press 0 to go back."
+        #             )
 
         case UserStates.ASK_USER_WHANT_RECIPES:
             match user_message:
                 case "1":
                     user_states[whatsapp_number] = UserStates.CHOICE_MEAL_TYPE_MENU
                     await bot_menu_service.send_choice_meal_type_menu(whatsapp_number)
-                case "2":
+                case "0":
                     user_states[whatsapp_number] = UserStates.MAIN_MENU
                     await bot_menu_service.send_main_menu(whatsapp_number)
                 case _:
                     await bot_menu_service.send_message(
-                        whatsapp_number, "❌ Invalid option. Press 2 to go back."
+                        whatsapp_number, "❌ Invalid option. Press 0 to go back."
                     )
 
         case UserStates.CHOICE_MEAL_TYPE_MENU:
@@ -267,9 +285,9 @@ async def reply(
 
                     # Asc RAG for get recipes
                     personalized_recipe, recipe_id = await rag_service.ask_recipe(user_cache[whatsapp_number]["user_recipe_preference"])
-                    logger.info(f"Catch RECIPE_ID: {recipe_id}")
+                    logger.info(f"Catch RECIPE_ID and update in cash: {recipe_id}")
                     user_states[whatsapp_number] = UserStates.SHOW_PERSONALIZED_RECIPES_MENU
-                    user_cache[whatsapp_number]["get_recipe_id"] = recipe_id
+                    user_cache[whatsapp_number]["get_recipe_id"] = int(recipe_id)
                     await bot_menu_service.send_personalized_recipes_rag_menu(whatsapp_number, personalized_recipe)
                     await bot_menu_service.send_asc_quality_result_recipes_menu(whatsapp_number)
 
@@ -283,7 +301,14 @@ async def reply(
             match user_message:
                 case "1":
                     user_states[whatsapp_number] = UserStates.MENU_SAVE_RECIPE
+                    # Save liked recipe
                     await bot_menu_service.send_menu_liked_recipe(whatsapp_number)
+                    rating_dto = CreateRecipeRatingDTO(
+                        user_id=user.id,
+                        recipe_id=user_cache[whatsapp_number]["get_recipe_id"],
+                        rating=5,
+                    )
+                    await RecipeRatingsService.create_recipe_rating(uow, rating_dto)
 
                 case "2":
                     user_states[whatsapp_number] = UserStates.ASK_WHY_DISLIKE
@@ -297,10 +322,17 @@ async def reply(
         case UserStates.ASK_WHY_DISLIKE:
             match user_message:
                 case _:
-                    # TODO !!! Save comments and dislike recipe in DB
                     await bot_menu_service.send_message(
                         whatsapp_number, "Thanks for your comments!"
                     )
+                    rating_dto = CreateRecipeRatingDTO(
+                        user_id=user.id,
+                        recipe_id=user_cache[whatsapp_number]["get_recipe_id"],
+                        rating=1,
+                        comment=user_message[:350] # For long message
+                    )
+                    await RecipeRatingsService.create_recipe_rating(uow, rating_dto)
+                    
                     user_states[whatsapp_number] = UserStates.MAIN_MENU
                     await bot_menu_service.send_main_menu(whatsapp_number)
 
@@ -310,10 +342,13 @@ async def reply(
                     user_states[whatsapp_number] = UserStates.SHOPPING_LIST_RECIPE_AFTER_LIKE
                     recipe_ingredients = None # TODO get from liked recipe
                     recipe_name = None # TODO get from liked recipe
-                    # TODO save to shopping list table
                     user_states[whatsapp_number] = UserStates.MAIN_MENU
                     await bot_menu_service.send_main_menu(whatsapp_number)
+                    # TODO delete comments when finish func
                     # await bot_menu_service.send_shopping_list_recipe_after_like(whatsapp_number, recipe_ingredients, recipe_name)
+                    # user_states[whatsapp_number] = UserStates.MAIN_MENU
+                    # await asyncio.sleep(1.5)
+                    # await bot_menu_service.send_main_menu(whatsapp_number)
 
                 case "0":
                     user_states[whatsapp_number] = UserStates.MAIN_MENU
@@ -334,15 +369,5 @@ async def reply(
                     await bot_menu_service.send_message(
                         whatsapp_number, "❌ Invalid option. Press 0 to go back."
                     )
-
-        # case UserStates.NUTRITION_ASSISTANT_MENU:
-        #     match user_message:
-        #         case "0":
-        #             user_states[whatsapp_number] = UserStates.MAIN_MENU
-        #             await bot_menu_service.send_main_menu(whatsapp_number)
-        #         case _:
-        #             await bot_menu_service.send_message(
-        #                 whatsapp_number, "❌ Invalid option. Press 0 to go back."
-        #             )
 
     return ""
