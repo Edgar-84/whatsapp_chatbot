@@ -284,10 +284,12 @@ async def reply(
                     user_states[whatsapp_number] = UserStates.USER_WAITING_ANSWER
 
                     # Asc RAG for get recipes
-                    personalized_recipe, recipe_id = await rag_service.ask_recipe(user_cache[whatsapp_number]["user_recipe_preference"])
+                    personalized_recipe, recipe_id, recipe_name = await rag_service.ask_recipe(user_cache[whatsapp_number]["user_recipe_preference"])
                     logger.info(f"Catch RECIPE_ID and update in cash: {recipe_id}")
                     user_states[whatsapp_number] = UserStates.SHOW_PERSONALIZED_RECIPES_MENU
+                    # TODO create Class for save this info
                     user_cache[whatsapp_number]["get_recipe_id"] = int(recipe_id)
+                    user_cache[whatsapp_number]["get_recipe_name"] = recipe_name
                     await bot_menu_service.send_personalized_recipes_rag_menu(whatsapp_number, personalized_recipe)
                     await bot_menu_service.send_asc_quality_result_recipes_menu(whatsapp_number)
 
@@ -340,15 +342,16 @@ async def reply(
             match user_message:
                 case "1":
                     user_states[whatsapp_number] = UserStates.SHOPPING_LIST_RECIPE_AFTER_LIKE
-                    recipe_ingredients = None # TODO get from liked recipe
-                    recipe_name = None # TODO get from liked recipe
-                    user_states[whatsapp_number] = UserStates.MAIN_MENU
-                    await bot_menu_service.send_main_menu(whatsapp_number)
-                    # TODO delete comments when finish func
-                    # await bot_menu_service.send_shopping_list_recipe_after_like(whatsapp_number, recipe_ingredients, recipe_name)
+                    recipe_name = user_cache[whatsapp_number]["get_recipe_name"]
+                    grouped_foods = await FoodService.get_grouped_foods_by_recipe_id(uow, user_cache[whatsapp_number]["get_recipe_id"])
+                    logger.info(f"Grouped foods: {grouped_foods}")
                     # user_states[whatsapp_number] = UserStates.MAIN_MENU
-                    # await asyncio.sleep(1.5)
                     # await bot_menu_service.send_main_menu(whatsapp_number)
+
+                    await bot_menu_service.send_shopping_list_recipe_after_like(whatsapp_number, grouped_foods, recipe_name)
+                    user_states[whatsapp_number] = UserStates.MAIN_MENU
+                    await asyncio.sleep(1.5)
+                    await bot_menu_service.send_main_menu(whatsapp_number)
 
                 case "0":
                     user_states[whatsapp_number] = UserStates.MAIN_MENU

@@ -8,7 +8,7 @@ class RecipeRatingsRepository:
         self.table = "recipe_ratings"
 
     async def create_recipe_rating(self, recipe_rating: CreateRecipeRatingDTO) -> RecipeRatingsDTO:
-        result = await self.client.create(self.table, recipe_rating.model_dump())
+        result = await self.client.upsert(self.table, recipe_rating.model_dump())
         return RecipeRatingsDTO(**result)
 
     async def get_recipe_ratings_by_user_id(self, user_id: int) -> list[RecipeRatingsDTO]:

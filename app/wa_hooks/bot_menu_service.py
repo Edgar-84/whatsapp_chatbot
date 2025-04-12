@@ -6,6 +6,15 @@ class BotMenuService:
     def __init__(self, message_client: MessageClient):
         self.message_client = message_client
     
+    @staticmethod
+    async def __format_grouped_foods(grouped_foods: list[dict[str, list[str]]]) -> str:
+        lines = []
+        for group in grouped_foods:
+            line = f"{group['food_group_name']}:  {', '.join(group['foods'])}"
+            lines.append(line)
+
+        return "\n".join(lines)
+    
     async def send_first_message(self, whatsapp_number: str):
         await self.message_client.send_message(whatsapp_number, "👋 Hi, your results are ready!\nPlease enter your Client ID to validate your personal chat.")
 
@@ -190,7 +199,7 @@ class BotMenuService:
     
     async def send_menu_liked_recipe(self, whatsapp_number: str):
         menu_text = (
-            "Thanks for your review!\n"
+            "*Thanks for your review!*\n"
             "*What would you like to do?*\n\n"
             "1️⃣ Generate Shopping List for Recipe\n"
             "0️⃣ 🔝 Back to Main Menu\n"
@@ -198,8 +207,9 @@ class BotMenuService:
         await self.message_client.send_message(whatsapp_number, menu_text)
 
     async def send_shopping_list_recipe_after_like(self, whatsapp_number: str, recipe_ingredients: str, recipe_name: str):
+        recipe_ingredients = await self.__format_grouped_foods(recipe_ingredients)
         menu_text = (
-            f"*Here’s your shopping list for {recipe_name}:*\n\n"
+            f"*Here’s your shopping list for {recipe_name}*\n\n"
             f"{recipe_ingredients}\n\n"
             # "0️⃣ 🔝 Back to Main Menu\n"
         )

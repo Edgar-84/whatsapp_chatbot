@@ -107,6 +107,14 @@ class SupabaseClient(ISupabaseClient):
         except Exception as e:
            self._logger.error(f"Update operation failed: {e}")
            raise
+    
+    async def upsert(self, table: str, data: dict) -> Dict[str, Any]:
+        try:
+            result = await self._client.table(table).upsert(data).execute()
+            return result.data[0] if result.data else {}
+        except Exception as e:
+            self._logger.error(f"Upsert operation failed: {e}")
+            raise
 
     async def delete(self, table: str, query: dict) -> bool:
         try:

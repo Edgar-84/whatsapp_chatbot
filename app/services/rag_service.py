@@ -145,7 +145,7 @@ class AskRagForRecipe(RagService):
 
         if not selected_recipe:
             logger.warning(f"Recipe ID {recipe_id} not found in filtered recipes.")
-            return result_after_asc_ai, recipe_id  # fallback
+            return result_after_asc_ai, recipe_id, "Not found"  # fallback
 
         recipe_details = (
             f"\n\n*Selected Recipe:*\n"
@@ -158,7 +158,7 @@ class AskRagForRecipe(RagService):
 
         final_response = result_after_asc_ai + recipe_details
         logger.debug(f"Final response:\n{final_response}\n Recipe_ID: {recipe_id}")
-        return final_response, recipe_id
+        return final_response, recipe_id, selected_recipe.get('name')
     
     async def _search_similar_embeddings(self, query_embedding: list[float]) -> list[str]:
         """
@@ -275,13 +275,13 @@ class AskRagForRecipe(RagService):
         prompt = (
             "You are a professional nutritionist helping a client choose the most suitable recipe.\n"
             "Your task is to analyze the provided client preferences and a set of available recipes.\n"
+            "You need to find only one best match.\n"
             "If none of the available recipes contain the specified 'must include' ingredients, "
             "you must still choose the best match based on all *other* preferences.\n"
             "In this case, mention this clearly and explain your reasoning.\n\n"
 
             "Structure your response as follows:\n"
             "1. A friendly explanation of your recommendation, mentioning why it fits the client's needs.\n"
-            # "2. Then present the selected recipe details: Name, Subtitle, Preparation Time, Ingredients, Preparation Method.\n"
             "2. At the end, in square brackets, ONLY include the internal recipe ID (e.g., [RECIPE_ID: abc123]), "
             "but do NOT mention this to the client.\n\n"
         )

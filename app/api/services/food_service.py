@@ -21,3 +21,16 @@ class FoodService:
 
         except Exception as e:
             raise FoodServiceException(e)
+
+    @staticmethod
+    async def get_grouped_foods_by_recipe_id(uow: IUnitOfWork, recipe_id: int) -> list[dict[str, list[str]]] | None:
+        """
+        Get products grouped by groups for recipe by recipe_id
+        """
+        try:
+            async with uow:
+                grouped_foods = await uow.food_repository.get_grouped_foods_by_recipe_id(recipe_id)
+                return grouped_foods
+
+        except Exception as e:
+            raise FoodServiceException(e)

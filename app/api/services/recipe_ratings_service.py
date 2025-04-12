@@ -16,4 +16,7 @@ class RecipeRatingsService:
                 return recipe_rating
 
         except Exception as e:
-            raise RecipeRatingsServiceException(e)
+            logger.warning(f"Failed to create recipe rating: {e}")
+            return None
+            # raise RecipeRatingsServiceException(e)
+
