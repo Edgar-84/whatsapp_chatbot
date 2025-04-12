@@ -14,10 +14,12 @@ from app.api.dtos.recipe_user_preferences_dto import RecipeUserPreferencesDTO
 from app.api.dtos.user_dtos import UserDTO
 from app.api.dtos.food_dtos import FoodDTO
 from app.api.dtos.recipe_ratings_dtos import CreateRecipeRatingDTO
+from app.api.dtos.shopping_list_dtos import CreateShoppingListDTO, ShoppingListDTO
 # from app.api.dtos.recipes_dtos import RecipeDTO
 
 from app.api.services.user_service import UserService
 from app.api.services.food_service import FoodService
+from app.api.services.shopping_list_service import ShoppingListService
 # from app.api.services.recipes_service import RecipesService
 from app.api.services.recipe_ratings_service import RecipeRatingsService
 from app.config.logger_settings import get_logger
@@ -155,7 +157,31 @@ async def reply(
                     user_cache[whatsapp_number]["user_recipe_preference"] = RecipeUserPreferencesDTO()
                     await bot_menu_service.ask_user_whant_get_recipes_menu(whatsapp_number)
 
-                case "4" | "5":
+                case "4":
+                    user_states[whatsapp_number] = UserStates.USER_WAITING_ANSWER # Set block for user message
+                    get_user_shopping_list = await ShoppingListService.get_user_shopping_lists(uow, user.id)
+                    if len(get_user_shopping_list) == 0:
+                        await bot_menu_service.send_message(whatsapp_number, "*You have no liked recipes in your shopping list!*")
+                    
+                    else:
+                        await bot_menu_service.send_message(whatsapp_number, "*Your shopping list for your liked recipes:*\n")
+                        grouped_foods_tasks = [
+                            FoodService.get_grouped_foods_by_recipe_id(uow, shopping_list.recipe_id)
+                            for shopping_list in get_user_shopping_list
+                        ]
+                        grouped_foods_results = await asyncio.gather(*grouped_foods_tasks)
+                        for shopping_list, grouped_foods in zip(get_user_shopping_list, grouped_foods_results):
+                            await bot_menu_service.send_shopping_list_recipe_after_like(
+                                whatsapp_number,
+                                grouped_foods,
+                                shopping_list.recipe_name
+                            )
+                    
+                    user_states[whatsapp_number] = UserStates.MAIN_MENU
+                    await asyncio.sleep(1.5)
+                    await bot_menu_service.send_main_menu(whatsapp_number)
+                
+                case "5":
                     await bot_menu_service.send_message(
                         whatsapp_number, "Not available yet - under development!"
                     )
@@ -167,28 +193,6 @@ async def reply(
                         whatsapp_number, "❌ Invalid option. Please choose from the menu:"
                     )
                     await bot_menu_service.send_main_menu(whatsapp_number)
-
-        # case UserStates.MY_RESULT_MENU:
-        #     # TODO can be deleted state and this option
-        #     match user_message:
-        #         case "0":
-        #             user_states[whatsapp_number] = UserStates.MAIN_MENU
-        #             await bot_menu_service.send_main_menu(whatsapp_number)
-        #         case _:
-        #             await bot_menu_service.send_message(
-        #                 whatsapp_number, "❌ Invalid option. Press 0 to go back."
-        #             )
-
-        # case UserStates.MY_RESTRICTIONS_MENU:
-        # TODO can be deleted state and case
-        #     match user_message:
-        #         case "0":
-        #             user_states[whatsapp_number] = UserStates.MAIN_MENU
-        #             await bot_menu_service.send_main_menu(whatsapp_number)
-        #         case _:
-        #             await bot_menu_service.send_message(
-        #                 whatsapp_number, "❌ Invalid option. Press 0 to go back."
-        #             )
 
         case UserStates.ASK_USER_WHANT_RECIPES:
             match user_message:
@@ -311,6 +315,14 @@ async def reply(
                         rating=5,
                     )
                     await RecipeRatingsService.create_recipe_rating(uow, rating_dto)
+                    
+                    # Create Shopping List
+                    shopping_list_dto = CreateShoppingListDTO(
+                        user_id=user.id,
+                        recipe_id=user_cache[whatsapp_number]["get_recipe_id"],
+                        recipe_name=user_cache[whatsapp_number]["get_recipe_name"]
+                    )
+                    await ShoppingListService.create_shopping_list(uow, shopping_list_dto)
 
                 case "2":
                     user_states[whatsapp_number] = UserStates.ASK_WHY_DISLIKE
@@ -341,13 +353,8 @@ async def reply(
         case UserStates.MENU_SAVE_RECIPE:
             match user_message:
                 case "1":
-                    user_states[whatsapp_number] = UserStates.SHOPPING_LIST_RECIPE_AFTER_LIKE
                     recipe_name = user_cache[whatsapp_number]["get_recipe_name"]
                     grouped_foods = await FoodService.get_grouped_foods_by_recipe_id(uow, user_cache[whatsapp_number]["get_recipe_id"])
-                    logger.info(f"Grouped foods: {grouped_foods}")
-                    # user_states[whatsapp_number] = UserStates.MAIN_MENU
-                    # await bot_menu_service.send_main_menu(whatsapp_number)
-
                     await bot_menu_service.send_shopping_list_recipe_after_like(whatsapp_number, grouped_foods, recipe_name)
                     user_states[whatsapp_number] = UserStates.MAIN_MENU
                     await asyncio.sleep(1.5)
@@ -360,17 +367,6 @@ async def reply(
                 case _:
                     await bot_menu_service.send_message(
                         whatsapp_number, "❌ Invalid option. Please select necessary option *(from 1 to 0)*."
-                    )
-
-        case UserStates.SHOPPING_LIST_RECIPE_AFTER_LIKE:
-            match user_message:
-                case "0":
-                    user_states[whatsapp_number] = UserStates.MAIN_MENU
-                    await bot_menu_service.send_main_menu(whatsapp_number)
-
-                case _:
-                    await bot_menu_service.send_message(
-                        whatsapp_number, "❌ Invalid option. Press 0 to go back."
                     )
 
     return ""

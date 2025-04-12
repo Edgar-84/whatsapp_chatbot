@@ -16,3 +16,7 @@ class RecipesServiceException(Exception):
 
 class RecipeRatingsServiceException(Exception):
     pass
+
+
+class ShoppingListServiceException(Exception):
+    pass

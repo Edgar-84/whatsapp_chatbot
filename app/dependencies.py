@@ -24,7 +24,6 @@ class UserStates(str, Enum):
     SHOW_PERSONALIZED_RECIPES_MENU = "show_personalized_recipes_menu"  # When return fit recipes
     ASK_WHY_DISLIKE = "ask_why_dislike"  # Ask user why dislike
     MENU_SAVE_RECIPE = "menu_save_recipe"  # Menu to save recipe
-    SHOPPING_LIST_RECIPE_AFTER_LIKE = "shopping_list_recipe_after_like"  # Shopping List Recipe after like
 
     NUTRITION_ASSISTANT_MENU = "nutrition_assistant_menu"  # Personal Nutrition Assistant
 

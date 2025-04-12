@@ -6,6 +6,7 @@ from app.api.repositories.foods_repository import FoodRepository
 from app.api.repositories.meal_type_repository import MealTypeRepository
 from app.api.repositories.recipes_repository import RecipesRepository
 from app.api.repositories.recipe_ratings_repository import RecipeRatingsRepository
+from app.api.repositories.shopping_list_repository import ShoppingListRepository
 
 
 class IUnitOfWork(ABC):
@@ -14,6 +15,7 @@ class IUnitOfWork(ABC):
     meal_type_repository: MealTypeRepository
     recipe_repository: RecipesRepository
     recipe_ratings_repository: RecipeRatingsRepository
+    shopping_list_repository: ShoppingListRepository
 
     @abstractmethod
     async def __aenter__(self):
@@ -40,6 +42,7 @@ class UnitOfWork(IUnitOfWork):
         self.meal_type_repository = MealTypeRepository(self.client)
         self.recipe_repository = RecipesRepository(self.client)
         self.recipe_ratings_repository = RecipeRatingsRepository(self.client)
+        self.shopping_list_repository = ShoppingListRepository(self.client)
 
     async def __aenter__(self):
         # Here we don't have to initialize a session, as SupabaseClient is the connection.
