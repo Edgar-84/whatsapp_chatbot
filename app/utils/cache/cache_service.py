@@ -43,3 +43,4 @@ class UserStates:
     async def delete(self, key):
         async with self.lock:
             self.states.pop(key, None)
+

@@ -5,7 +5,8 @@ from contextlib import asynccontextmanager
 
 from app.routes import get_apps_router
 from app.utils.unitofwork import IUnitOfWork, UnitOfWork
-from app.utils.cache_service import UserCache, UserStates
+from app.utils.cache.ttl_cache import InMemoryUserCache
+# from app.utils.cache.user_session import UserSession, UserStates
 from app.wa_hooks.message_hooks import MessageClient
 from app.wa_hooks.bot_menu_service import BotMenuService
 from app.config.logger_settings import get_logger
@@ -39,14 +40,14 @@ def get_bot_menu_service() -> BotMenuService:
 
 def get_user_states() -> dict:
     logger.info("Creating [UserStates]...")
-    # user_states = {}  # {'phone_number': 'awaiting_id' / 'verified' / 'menu'}
-    user_states = UserStates()
+    user_states = {}  # {'phone_number': 'awaiting_id' / 'verified' / 'menu'}
+    # user_states = UserStates()
     return user_states
 
 def get_user_cache() -> dict:
     logger.info("Creating [UserCache]...")
-    user_cache = {}
-    # user_cache = UserCache()
+    # user_cache = {}
+    user_cache = InMemoryUserCache()
     return user_cache
 
 

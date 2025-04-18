@@ -1,13 +1,14 @@
 import asyncio
 from fastapi import APIRouter, Depends, HTTPException, Form, Request
 
+from app.utils.cache.user_session import UserSession, UserStates
 from app.services.ascii_service import ASCIIService
 from app.dependencies import (
     BotMenuServiceDep,
     UserStatesDep,
     UOWDep,
     UserCacheDep,
-    UserStates,
+    # UserStates,
     AskRagForRecipeDep
 )
 from app.api.dtos.recipe_user_preferences_dto import RecipeUserPreferencesDTO
@@ -45,77 +46,93 @@ async def reply(
     whatsapp_number = form_data['From'].split("whatsapp:")[-1]
     user_message = Body.strip()
 
-    state = await user_states.get(whatsapp_number)
-    # Check if user not in cache and not in verification state
-    if whatsapp_number not in user_cache and state != UserStates.AWAITING_VERIFICATION:
-        logger.info(f"User {whatsapp_number} not in cache and not in verification state, with message: {user_message}")
-        await bot_menu_service.send_first_message(whatsapp_number)
-        await user_states.set(whatsapp_number, UserStates.AWAITING_VERIFICATION)
-        return ""
+    user_session = UserSession(user_cache, whatsapp_number)
 
-    # Check if user in verification state
-    if state == UserStates.AWAITING_VERIFICATION and whatsapp_number not in user_cache:
+    if not await user_session.exists():
+        logger.info(f"User {whatsapp_number} not in cache. Checking DB verification status.")
         try:
-            logger.info(f"Verifying client ID for {whatsapp_number} with message: {user_message}")
-            user = await UserService().get_user_by_phone_and_client_id(uow, whatsapp_number, int(user_message))
-        except Exception as e:
-            logger.warning(f"Error verifying client ID for {whatsapp_number}: {str(e)}")
-            user = None
+            user = await UserService().get_user_by_phone(uow, whatsapp_number)
+            if user is None:
+                logger.info(f"Failed to get user by phone {whatsapp_number}: {e}")
+                await bot_menu_service.send_message(whatsapp_number, "Your number is not in the system, contact support at @support email")
+                return ""
 
-        if user:
-            logger.info(f"User {whatsapp_number} verified successfully!")
-            await bot_menu_service.send_you_verified_message(whatsapp_number)
-            updated_user = await UserService().verify_user(uow, user.id)
-            user_cache[whatsapp_number] = {
-                "user": updated_user,
-                "user_recipe_preference": None,
-                "get_recipe_id": None,
-                "restrictions_lab_codes": None,
-                "personalized_recipes": None,
-                "high_sensitivity_foods": None,
-                "low_sensitivity_foods": None,
-                "all_restriction_products": None
-            }
-            await user_states.set(whatsapp_number, UserStates.MAIN_MENU)
+        except Exception as e:
+            logger.warning(f"Failed to get user by phone {whatsapp_number}: {e}")
+            await bot_menu_service.send_message(whatsapp_number, "Your number is not in the system, contact support at @support email")
+            return ""
+
+        if user.verified:
+            logger.info(f"User {whatsapp_number} is already verified in DB.")
+            await user_session.set_user(user)
+            await user_session.set_state(UserStates.MAIN_MENU)
             await bot_menu_service.send_main_menu(whatsapp_number)
+            return ""
 
         else:
-            logger.info(f"User select Invalid Client ID {user_message} for {whatsapp_number}")
+            logger.info(f"User {whatsapp_number} is not verified. Sending first message.")
+            await user_session.set_user(user)
+            await user_session.set_state(UserStates.AWAITING_VERIFICATION)
+            await bot_menu_service.send_first_message(whatsapp_number)
+            return ""
+
+    state = await user_session.get_state()
+    logger.info(f"USER STATE: {state}")
+    user: UserDTO = await user_session.get_user()
+    logger.info(f"USER: {user}")
+
+    if state == UserStates.AWAITING_VERIFICATION:
+        try:
+            logger.info(f"Trying to verify {whatsapp_number} with Client ID: {user_message}")
+            verified_user = await UserService().get_user_by_phone_and_client_id(uow, whatsapp_number, int(user_message))
+            if verified_user is None:
+                raise Exception("Verification failed")
+        except Exception as e:
+            logger.warning(f"Verification error for {whatsapp_number}: {e}")
             await bot_menu_service.send_invalid_client_id_message(whatsapp_number)
+            return ""
+
+        logger.info(f"User {whatsapp_number} verified successfully.")
+        updated_user = await UserService().verify_user(uow, verified_user.id)
+        await user_session.set_user(updated_user)
+        await user_session.set_state(UserStates.MAIN_MENU)
+        await bot_menu_service.send_you_verified_message(whatsapp_number)
+        await bot_menu_service.send_main_menu(whatsapp_number)
         return ""
 
-    user: UserDTO = user_cache[whatsapp_number]["user"]
-    logger.info(f"User retrieved from cache: {user}")
-    state = await user_states.get(whatsapp_number, UserStates.AWAITING_VERIFICATION)
-    logger.info(f"User state: {state}")
 
     # Menu for verified user
     match state:
         case UserStates.MAIN_MENU:
             match user_message:
                 case "1":
-                    # user_states[whatsapp_number] = UserStates.MY_RESULT_MENU
                     await bot_menu_service.send_my_results_menu(whatsapp_number, user.pdf_result_link)
-                    await user_states.set(whatsapp_number, UserStates.MAIN_MENU)
+                    # await user_states.set(whatsapp_number, UserStates.MAIN_MENU)
+                    await user_session.set_state(UserStates.MAIN_MENU)
                     await asyncio.sleep(1.5)
                     await bot_menu_service.send_main_menu(whatsapp_number)
-
+                    return ""
                 case "2":
-                    await user_states.set(whatsapp_number, UserStates.USER_WAITING_ANSWER) # Set block for user message
+                    # await user_states.set(whatsapp_number, UserStates.USER_WAITING_ANSWER) # Set block for user message
+                    await user_session.set_state(UserStates.USER_WAITING_ANSWER)
                     await bot_menu_service.send_wait_message(whatsapp_number)
                     ascii_result_link = user.ascii_result_link
 
-                    if user_cache[whatsapp_number]["high_sensitivity_foods"] is not None and user_cache[whatsapp_number]["low_sensitivity_foods"] is not None:
+                    high_sensitivity_foods = await user_session.get_high_sensitivity_foods()
+                    low_sensitivity_foods = await user_session.get_low_sensitivity_foods()
+
+                    if high_sensitivity_foods is not None and low_sensitivity_foods is not None:
                         logger.info(f" === Find Restrictions in User cache! ===")
                         # user_states[whatsapp_number] = UserStates.MY_RESTRICTIONS_MENU
-                        high_sensitivity_foods_names = [food.name for food in user_cache[whatsapp_number]["high_sensitivity_foods"]]
-                        low_sensitivity_foods_names = [food.name for food in user_cache[whatsapp_number]["low_sensitivity_foods"]]
+                        high_sensitivity_foods_names = [food.name for food in high_sensitivity_foods]
+                        low_sensitivity_foods_names = [food.name for food in low_sensitivity_foods]
                         await bot_menu_service.send_my_restrictions_menu(
                             whatsapp_number,
                             high_sensitivity_foods_names,
                             low_sensitivity_foods_names
                         )
-                        await user_states.set(whatsapp_number, UserStates.MAIN_MENU)
+                        # await user_session.set(whatsapp_number, UserStates.MAIN_MENU)
+                        await user_session.set_state(UserStates.MAIN_MENU)
                         await asyncio.sleep(1.5)
                         await bot_menu_service.send_main_menu(whatsapp_number)
 
@@ -124,14 +141,17 @@ async def reply(
                         file_id = ascii_result_link.split("/d/")[1].split("/view")[0]
                         logger.info(f"File ID: {file_id}")
                         high_sensitivity_foods_codes, low_sensitivity_foods_codes = await ASCIIService.process_csv(file_id)
-                        user_cache[whatsapp_number]["restrictions_lab_codes"] = high_sensitivity_foods_codes + low_sensitivity_foods_codes
-
+                        # user_cache[whatsapp_number]["restrictions_lab_codes"] = high_sensitivity_foods_codes + low_sensitivity_foods_codes
+                        await user_session.set_restrictions_lab_codes(high_sensitivity_foods_codes + low_sensitivity_foods_codes)
                         # TODO create one request instead of two, and filter results on hight and low foods
                         high_sensitivity_foods: list[FoodDTO] = await FoodService().get_foods_by_list_lab_codes(uow, high_sensitivity_foods_codes)
                         low_sensitivity_foods: list[FoodDTO] = await FoodService().get_foods_by_list_lab_codes(uow, low_sensitivity_foods_codes)
-                        user_cache[whatsapp_number]["high_sensitivity_foods"] = high_sensitivity_foods
-                        user_cache[whatsapp_number]["low_sensitivity_foods"] = low_sensitivity_foods
-                        user_cache[whatsapp_number]["all_restriction_products"] = high_sensitivity_foods + low_sensitivity_foods
+                        # user_cache[whatsapp_number]["high_sensitivity_foods"] = high_sensitivity_foods
+                        # user_cache[whatsapp_number]["low_sensitivity_foods"] = low_sensitivity_foods
+                        # user_cache[whatsapp_number]["all_restriction_products"] = high_sensitivity_foods + low_sensitivity_foods
+                        await user_session.set_high_sensitivity_foods(high_sensitivity_foods)
+                        await user_session.set_low_sensitivity_foods(low_sensitivity_foods)
+                        await user_session.set_all_restriction_products(high_sensitivity_foods + low_sensitivity_foods)
 
                         # user_cache[whatsapp_number]["restrictions_foods_id"] = [food.id for food in high_sensitivity_foods + low_sensitivity_foods]
                         high_sensitivity_foods_names = [food.name for food in high_sensitivity_foods]
@@ -140,26 +160,30 @@ async def reply(
                         logger.info(f"Low sensitivity foods: {low_sensitivity_foods_names}")
                         # user_states[whatsapp_number] = UserStates.MY_RESTRICTIONS_MENU
                         await bot_menu_service.send_my_restrictions_menu(whatsapp_number, high_sensitivity_foods_names, low_sensitivity_foods_names)
-                        await user_states.set(whatsapp_number, UserStates.MAIN_MENU)
+                        # await user_states.set(whatsapp_number, UserStates.MAIN_MENU)
+                        await user_session.set_state(UserStates.MAIN_MENU)
                         await asyncio.sleep(1.5)
                         await bot_menu_service.send_main_menu(whatsapp_number)
 
                     else:
                         # user_states[whatsapp_number] = UserStates.MY_RESTRICTIONS_MENU
                         await bot_menu_service.send_my_restrictions_menu(whatsapp_number)
-                        await user_states.set(whatsapp_number, UserStates.MAIN_MENU)
+                        # await user_states.set(whatsapp_number, UserStates.MAIN_MENU)
+                        await user_session.set_state(UserStates.MAIN_MENU)
                         await asyncio.sleep(1.5)
                         await bot_menu_service.send_main_menu(whatsapp_number)
 
                 case "3":
-                    await user_states.set(whatsapp_number, UserStates.CHOICE_MEAL_TYPE_MENU)
+                    # await user_states.set(whatsapp_number, UserStates.CHOICE_MEAL_TYPE_MENU)
+                    await user_session.set_state(UserStates.CHOICE_MEAL_TYPE_MENU)
                     # Create DTO for save user preferences
-                    user_cache[whatsapp_number]["user_recipe_preference"] = RecipeUserPreferencesDTO()
+                    # user_cache[whatsapp_number]["user_recipe_preference"] = RecipeUserPreferencesDTO()
+                    await user_session.set_user_recipe_preference(RecipeUserPreferencesDTO())
                     await bot_menu_service.send_choice_meal_type_menu(whatsapp_number)
                     # await bot_menu_service.ask_user_whant_get_recipes_menu(whatsapp_number)
-
                 case "4":
-                    await user_states.set(whatsapp_number, UserStates.USER_WAITING_ANSWER) # Set block for user message
+                    # await user_states.set(whatsapp_number, UserStates.USER_WAITING_ANSWER) # Set block for user message
+                    await user_session.set_state(UserStates.USER_WAITING_ANSWER)
                     get_user_shopping_list = await ShoppingListService.get_user_shopping_lists(uow, user.id)
                     if len(get_user_shopping_list) == 0:
                         await bot_menu_service.send_message(whatsapp_number, "*You have no liked recipes in your shopping list!*")
@@ -180,7 +204,8 @@ async def reply(
                             )
                             await asyncio.sleep(1)
                     
-                    await user_states.set(whatsapp_number, UserStates.MAIN_MENU)
+                    # await user_states.set(whatsapp_number, UserStates.MAIN_MENU)
+                    await user_session.set_state(UserStates.MAIN_MENU)
                     await asyncio.sleep(1.5)
                     await bot_menu_service.send_main_menu(whatsapp_number)
                 
@@ -203,10 +228,12 @@ async def reply(
             # TODO can be deleted, old menu
             match user_message:
                 case "1":
-                    await user_states.set(whatsapp_number, UserStates.CHOICE_MEAL_TYPE_MENU)
+                    # await user_states.set(whatsapp_number, UserStates.CHOICE_MEAL_TYPE_MENU)
+                    await user_session.set_state(UserStates.CHOICE_MEAL_TYPE_MENU)
                     await bot_menu_service.send_choice_meal_type_menu(whatsapp_number)
                 case "0":
-                    await user_states.set(whatsapp_number, UserStates.MAIN_MENU)
+                    # await user_states.set(whatsapp_number, UserStates.MAIN_MENU)
+                    await user_session.set_state(UserStates.MAIN_MENU)
                     await bot_menu_service.send_main_menu(whatsapp_number)
                 case _:
                     await bot_menu_service.send_message(
@@ -217,7 +244,8 @@ async def reply(
             # After client choose meal type
             match user_message:
                 case "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8":
-                    await user_states.set(whatsapp_number, UserStates.DIETARY_PREFERENCE_FILTER)
+                    # await user_states.set(whatsapp_number, UserStates.DIETARY_PREFERENCE_FILTER)
+                    await user_session.set_state(UserStates.DIETARY_PREFERENCE_FILTER)
                     meal_type = {
                         "1": "Breakfast",
                         "2": "Lunch",
@@ -228,12 +256,12 @@ async def reply(
                         "7": "Desserts",
                         "8": "Soups"
                     }[user_message]
-                    user_cache[whatsapp_number]["user_recipe_preference"].meal_type = meal_type
-                    logger.debug(f"UPDATE Meal type: {user_cache[whatsapp_number]['user_recipe_preference']}")
+                    # user_cache[whatsapp_number]["user_recipe_preference"].meal_type = meal_type
+                    await user_session.update_user_recipe_preference(meal_type=meal_type)
                     await bot_menu_service.ask_user_dietary_preference_menu(whatsapp_number)
-
                 case "0":
-                    await user_states.set(whatsapp_number, UserStates.MAIN_MENU)
+                    # await user_states.set(whatsapp_number, UserStates.MAIN_MENU)
+                    await user_session.set_state(UserStates.MAIN_MENU)
                     await bot_menu_service.send_main_menu(whatsapp_number)
                 case _:
                     await bot_menu_service.send_message(
@@ -251,12 +279,14 @@ async def reply(
                         "4": "Low Carb",
                         "5": "No preference"
                     }[user_message]
-
-                    user_cache[whatsapp_number]["user_recipe_preference"].dietary_preference = dietary_preference
-                    logger.debug(f"UPDATE Dietary preference: {user_cache[whatsapp_number]['user_recipe_preference']}")
-                    await user_states.set(whatsapp_number, UserStates.INCLUDE_INGREDIENTS_FILTER)
+                    
+                    # user_cache[whatsapp_number]["user_recipe_preference"].dietary_preference = dietary_preference
+                    await user_session.update_user_recipe_preference(dietary_preference=dietary_preference)
+                    dietary_preference = await user_session.get_user_recipe_preference()
+                    logger.debug(f"UPDATE Dietary preference: {dietary_preference}")
+                    # await user_states.set(whatsapp_number, UserStates.INCLUDE_INGREDIENTS_FILTER)
+                    await user_session.set_state(UserStates.INCLUDE_INGREDIENTS_FILTER)
                     await bot_menu_service.ask_user_include_ingredients_menu(whatsapp_number)
-
                 case _:
                     await bot_menu_service.send_message(
                         whatsapp_number, "❌ Invalid option. Select necessary Dietary preference *(from 1 to 5)*."
@@ -267,11 +297,12 @@ async def reply(
                 case _:
                     await bot_menu_service.send_user_message_about_waiting_result(whatsapp_number)
                     if user_message != "0":
-                        user_cache[whatsapp_number]["user_recipe_preference"].include_ingredients = user_message
-                        logger.debug(f"UPDATE Include ingredients: {user_cache[whatsapp_number]['user_recipe_preference']}")
+                        # user_cache[whatsapp_number]["user_recipe_preference"].include_ingredients = user_message
+                        await user_session.update_user_recipe_preference(include_ingredients=user_message)
                     
                     # Add restriction products for filter
-                    restrictions_products = user_cache[whatsapp_number]["all_restriction_products"]
+                    # restrictions_products = user_cache[whatsapp_number]["all_restriction_products"]
+                    restrictions_products = await user_session.get_all_restriction_products()
                     if restrictions_products is None:
                         logger.debug("Restrictions not found [INCLUDE_INGREDIENTS_FILTER], processing ASCII result...")
                         ascii_result_link = user.ascii_result_link
@@ -279,37 +310,49 @@ async def reply(
                             file_id = ascii_result_link.split("/d/")[1].split("/view")[0]
                             logger.debug(f"File ID: {file_id}")
                             high_sensitivity_foods_codes, low_sensitivity_foods_codes = await ASCIIService.process_csv(file_id)
-                            user_cache[whatsapp_number]["restrictions_lab_codes"] = high_sensitivity_foods_codes + low_sensitivity_foods_codes
+                            # user_cache[whatsapp_number]["restrictions_lab_codes"] = high_sensitivity_foods_codes + low_sensitivity_foods_codes
+                            await user_session.set_restrictions_lab_codes(high_sensitivity_foods_codes + low_sensitivity_foods_codes)
                             high_sensitivity_foods: list[FoodDTO] = await FoodService().get_foods_by_list_lab_codes(uow, high_sensitivity_foods_codes)
                             low_sensitivity_foods: list[FoodDTO] = await FoodService().get_foods_by_list_lab_codes(uow, low_sensitivity_foods_codes)
-                            user_cache[whatsapp_number]["high_sensitivity_foods"] = high_sensitivity_foods
-                            user_cache[whatsapp_number]["low_sensitivity_foods"] = low_sensitivity_foods
-                            user_cache[whatsapp_number]["all_restriction_products"] = high_sensitivity_foods + low_sensitivity_foods
-                            user_cache[whatsapp_number]["user_recipe_preference"].banned_foods = [food.name for food in user_cache[whatsapp_number]["all_restriction_products"]]
-                            logger.debug(f"UPDATE Banned foods for user preferences: {user_cache[whatsapp_number]['user_recipe_preference']}")
-
+                            # user_cache[whatsapp_number]["high_sensitivity_foods"] = high_sensitivity_foods
+                            # user_cache[whatsapp_number]["low_sensitivity_foods"] = low_sensitivity_foods
+                            # user_cache[whatsapp_number]["all_restriction_products"] = high_sensitivity_foods + low_sensitivity_foods
+                            await user_session.set_high_sensitivity_foods(high_sensitivity_foods)
+                            await user_session.set_low_sensitivity_foods(low_sensitivity_foods)
+                            await user_session.set_all_restriction_products(high_sensitivity_foods + low_sensitivity_foods)
+                            # user_cache[whatsapp_number]["user_recipe_preference"].banned_foods = [food.name for food in user_cache[whatsapp_number]["all_restriction_products"]]
+                            all_restr_products = await user_session.get_all_restriction_products()
+                            await user_session.update_user_recipe_preference(banned_foods=[food.name for food in all_restr_products])
+                        
                     else:
-                        user_cache[whatsapp_number]["user_recipe_preference"].banned_foods = [food.name for food in restrictions_products]
+                        # user_cache[whatsapp_number]["user_recipe_preference"].banned_foods = [food.name for food in restrictions_products]
+                        await user_session.update_user_recipe_preference(banned_foods=[food.name for food in restrictions_products])
                     
-                    await user_states.set(whatsapp_number, UserStates.USER_WAITING_ANSWER)
-
+                    # await user_states.set(whatsapp_number, UserStates.USER_WAITING_ANSWER)
+                    await user_session.set_state(UserStates.USER_WAITING_ANSWER)
+                    
                     # Get disliked recipes
                     disliked_recipes_list = await RecipeRatingsService.get_disliked_recipes_by_user_id(uow, user.id)
                     disliked_recipes_id = [recipe.recipe_id for recipe in disliked_recipes_list]
                     disliked_recipes_comments = [recipe.comment for recipe in disliked_recipes_list if recipe.comment is not None]
                     logger.info(f"Disliked recipes list: {disliked_recipes_list} for user: {user.id}")
                     logger.info(f"Disliked recipes comments: {disliked_recipes_comments} for user: {user.id}")
-                    user_cache[whatsapp_number]["user_recipe_preference"].disliked_recipes_id = disliked_recipes_id
-                    user_cache[whatsapp_number]["user_recipe_preference"].disliked_recipes_comments = disliked_recipes_comments
+                    # user_cache[whatsapp_number]["user_recipe_preference"].disliked_recipes_id = disliked_recipes_id
+                    # user_cache[whatsapp_number]["user_recipe_preference"].disliked_recipes_comments = disliked_recipes_comments
+                    await user_session.update_user_recipe_preference(disliked_recipes_id=disliked_recipes_id, disliked_recipes_comments=disliked_recipes_comments)
                     
                     # Asc RAG for get recipes
-                    personalized_recipe, recipe_id, recipe_name = await rag_service.ask_recipe(user_cache[whatsapp_number]["user_recipe_preference"])
+                    user_recipe_preference = await user_session.get_user_recipe_preference()
+                    personalized_recipe, recipe_id, recipe_name = await rag_service.ask_recipe(user_recipe_preference) #user_cache[whatsapp_number]["user_recipe_preference"])
                     logger.info(f"Catch RECIPE_ID and update in cash: {recipe_id}")
-                    await user_states.set(whatsapp_number, UserStates.SHOW_PERSONALIZED_RECIPES_MENU)
+                    # await user_states.set(whatsapp_number, UserStates.SHOW_PERSONALIZED_RECIPES_MENU)
+                    await user_session.set_state(UserStates.SHOW_PERSONALIZED_RECIPES_MENU)
                     # TODO create Class for save this info
-                    user_cache[whatsapp_number]["get_recipe_id"] = int(recipe_id)
-                    user_cache[whatsapp_number]["get_recipe_name"] = recipe_name
-
+                    # user_cache[whatsapp_number]["get_recipe_id"] = int(recipe_id)
+                    # user_cache[whatsapp_number]["get_recipe_name"] = recipe_name
+                    await user_session.set_get_recipe_id(int(recipe_id))
+                    await user_session.set_get_recipe_name(recipe_name)
+                    
                     ai_recommendation, selected_recipe = personalized_recipe
                     await bot_menu_service.send_personalized_recipes_rag_menu(whatsapp_number, ai_recommendation)
                     await asyncio.sleep(1.5)
@@ -326,28 +369,30 @@ async def reply(
         case UserStates.SHOW_PERSONALIZED_RECIPES_MENU:
             match user_message:
                 case "1":
-                    await user_states.set(whatsapp_number, UserStates.MENU_SAVE_RECIPE)
+                    # await user_states.set(whatsapp_number, UserStates.MENU_SAVE_RECIPE)
+                    await user_session.set_state(UserStates.MENU_SAVE_RECIPE)
                     # Save liked recipe
                     await bot_menu_service.send_menu_liked_recipe(whatsapp_number)
+                    get_recipe_id = await user_session.get_get_recipe_id()
                     rating_dto = CreateRecipeRatingDTO(
                         user_id=user.id,
-                        recipe_id=user_cache[whatsapp_number]["get_recipe_id"],
+                        recipe_id=get_recipe_id,
                         rating=5,
                     )
                     await RecipeRatingsService.create_recipe_rating(uow, rating_dto)
-                    
+                    get_recipe_name = await user_session.get_get_recipe_name()
                     # Create Shopping List
                     shopping_list_dto = CreateShoppingListDTO(
                         user_id=user.id,
-                        recipe_id=user_cache[whatsapp_number]["get_recipe_id"],
-                        recipe_name=user_cache[whatsapp_number]["get_recipe_name"]
+                        recipe_id=get_recipe_id,
+                        recipe_name=get_recipe_name
                     )
                     await ShoppingListService.create_shopping_list(uow, shopping_list_dto)
 
                 case "2":
-                    await user_states.set(whatsapp_number, UserStates.ASK_WHY_DISLIKE)
+                    # await user_states.set(whatsapp_number, UserStates.ASK_WHY_DISLIKE)
+                    await user_session.set_state(UserStates.ASK_WHY_DISLIKE)
                     await bot_menu_service.send_question_why_dislike(whatsapp_number)                    
-
                 case _:
                     await bot_menu_service.send_message(
                         whatsapp_number, "❌ Invalid option. Please select necessary option *(from 1 to 2)*."
@@ -359,29 +404,34 @@ async def reply(
                     await bot_menu_service.send_message(
                         whatsapp_number, "Thanks for your comments!"
                     )
+                    get_recipe_id = await user_session.get_get_recipe_id()
                     rating_dto = CreateRecipeRatingDTO(
                         user_id=user.id,
-                        recipe_id=user_cache[whatsapp_number]["get_recipe_id"],
+                        recipe_id=get_recipe_id,
                         rating=1,
                         comment=user_message[:350] # For long message
                     )
                     await RecipeRatingsService.create_recipe_rating(uow, rating_dto)
                     
-                    await user_states.set(whatsapp_number, UserStates.MAIN_MENU)
+                    # await user_states.set(whatsapp_number, UserStates.MAIN_MENU)
+                    await user_session.set_state(UserStates.MAIN_MENU)
                     await bot_menu_service.send_main_menu(whatsapp_number)
 
         case UserStates.MENU_SAVE_RECIPE:
             match user_message:
                 case "1":
-                    recipe_name = user_cache[whatsapp_number]["get_recipe_name"]
-                    grouped_foods = await FoodService.get_grouped_foods_by_recipe_id(uow, user_cache[whatsapp_number]["get_recipe_id"])
+                    # recipe_name = user_cache[whatsapp_number]["get_recipe_name"]
+                    recipe_name = await user_session.get_get_recipe_name()
+                    recipe_id = await user_session.get_get_recipe_id()
+                    grouped_foods = await FoodService.get_grouped_foods_by_recipe_id(uow, recipe_id) #user_cache[whatsapp_number]["get_recipe_id"])
                     await bot_menu_service.send_shopping_list_recipe_after_like(whatsapp_number, grouped_foods, recipe_name)
-                    await user_states.set(whatsapp_number, UserStates.MAIN_MENU)
+                    # await user_states.set(whatsapp_number, UserStates.MAIN_MENU)
+                    await user_session.set_state(UserStates.MAIN_MENU)
                     await asyncio.sleep(1.5)
                     await bot_menu_service.send_main_menu(whatsapp_number)
-
                 case "0":
-                    await user_states.set(whatsapp_number, UserStates.MAIN_MENU)
+                    # await user_states.set(whatsapp_number, UserStates.MAIN_MENU)
+                    await user_session.set_state(UserStates.MAIN_MENU)
                     await bot_menu_service.send_main_menu(whatsapp_number)
 
                 case _:

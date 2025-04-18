@@ -27,3 +27,13 @@ class UserService:
 
         except Exception as e:
             raise UserServiceException(e)
+
+    @staticmethod
+    async def get_user_by_phone(uow: IUnitOfWork, phone_number: str) -> UserDTO | None:
+        try:
+            async with uow:
+                user = await uow.user_repository.get_user({"phone": phone_number})
+                return user
+
+        except Exception as e:
+            raise UserServiceException(e)

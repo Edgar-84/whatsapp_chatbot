@@ -13,7 +13,12 @@ logger = get_logger("rag_service")
 def clean_text(text: str) -> str:
     if not text:
         return ""
-    return html.unescape(text.replace('\\\'', "'").replace('\r\n', '\n').replace('\n\n', '\n'))
+    text = html.unescape(text)
+    text = text.replace("\\'", "'")
+    text = text.replace('\r\n', '\n')
+    text = text.replace('\r', '\n')
+    text = re.sub(r'\n{2,}', '\n', text)
+    return text.strip()
 
 
 class RagService:
@@ -152,33 +157,44 @@ class AskRagForRecipe(RagService):
             logger.warning(f"Recipe ID {recipe_id} not found in filtered recipes.")
             return result_after_asc_ai, recipe_id, "Not found"  # fallback
 
-        # preparation = selected_recipe.get('preparation_method', '').replace('\r\n', '\n')
-        preparation = clean_text(selected_recipe.get('preparation_method', ''))
-        ingredients = clean_text(selected_recipe.get('ingredients', '')).replace(';', '\n')
-        nut_recommend = clean_text(selected_recipe.get('nut_recommend', ''))
-        comment = clean_text(selected_recipe.get('comment', ''))
-        recipe_details = (
-            f"\n\n*🍽 Recipe structure:*\n"
-            f"*Name:* {selected_recipe.get('name')}\n"
-            f"*Sub title:* {selected_recipe.get('sub_title', '')}\n"
-            f"*Meal type:* {selected_recipe.get('meal_type', '')}\n"
-            f"*Minutes:* {selected_recipe.get('minutes', '')}\n"
-            f"*Preparation Method:*\n{preparation}\n"
-            f"*Ingredients:*\n{ingredients}\n"
-            f"*Nut recommend:*\n{nut_recommend}\n"
-            f"*Comment:*\n{comment}\n"
-        )
+
+        # preparation = clean_text(selected_recipe.get('preparation_method', ''))
+        # ingredients = clean_text(selected_recipe.get('ingredients', '')).replace(';', '\n')
+        # nut_recommend = clean_text(selected_recipe.get('nut_recommend', ''))
+        # comment = clean_text(selected_recipe.get('comment', ''))
         # recipe_details = (
-        #     f"\n\n*Recipe structure:*\n"
+        #     f"\n\n*🍽 Recipe structure:*\n"
         #     f"*Name:* {selected_recipe.get('name')}\n"
         #     f"*Sub title:* {selected_recipe.get('sub_title', '')}\n"
         #     f"*Meal type:* {selected_recipe.get('meal_type', '')}\n"
         #     f"*Minutes:* {selected_recipe.get('minutes', '')}\n"
         #     f"*Preparation Method:*\n{preparation}\n"
-        #     f"*Ingredients:* {selected_recipe.get('ingredients').replace(';', '\n')}\n"
-        #     f"*Nut recommend:* {selected_recipe.get('nut_recommend')}\n"
-        #     f"*Comment:* {selected_recipe.get('comment')}\n"
+        #     f"*Ingredients:*\n{ingredients}\n"
+        #     f"*Nut recommend:*\n{nut_recommend}\n"
+        #     f"*Comment:*\n{comment}\n"
         # )
+
+        preparation = clean_text(selected_recipe.get('preparation_method', '')).replace('\\r\\n', '\n')
+        ingredients = clean_text(selected_recipe.get('ingredients', '')).replace(';', '\n')
+        nut_recommend = clean_text(selected_recipe.get('nut_recommend', '')).replace('\\r\\n', '\n')
+        comment = clean_text(selected_recipe.get('comment', '')).replace('\\r\\n', '\n')
+
+        name = clean_text(selected_recipe.get('name', ''))
+        sub_title = clean_text(selected_recipe.get('sub_title', ''))
+        meal_type = clean_text(selected_recipe.get('meal_type', '')).replace(';', ', ')
+        minutes = selected_recipe.get('minutes', '')
+
+        recipe_details = (
+            f"\n\n*🍽 Recipe structure:*\n"
+            f"*Name:* {name}\n"
+            f"*Sub title:* {sub_title}\n"
+            f"*Meal type:* {meal_type}\n"
+            f"*Minutes:* {minutes}\n"
+            f"*Preparation Method:*\n{preparation}\n"
+            f"*Ingredients:*\n{ingredients}\n"
+            f"*Nut recommend:*\n{nut_recommend}\n"
+            f"*Comment:*\n{comment}\n"
+        )
 
         final_response = [result_after_asc_ai, recipe_details]
         logger.debug(f"Final response:\n{final_response}\n Recipe_ID: {recipe_id}")
