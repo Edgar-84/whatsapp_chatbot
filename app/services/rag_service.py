@@ -228,14 +228,6 @@ class AskRagForRecipe(RagService):
                 logger.debug(f"Skipping recipe {recipe['id']} due to banned ingredient")
                 continue
 
-        filtered.append(recipe)
-
-    return filtered
-
-        filtered.append(recipe)
-
-    return filtered
-
             filtered.append(recipe)
 
         return filtered
