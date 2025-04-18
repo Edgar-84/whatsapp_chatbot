@@ -2,6 +2,7 @@ from enum import Enum
 from typing import Annotated
 from fastapi import Depends, Request
 from app.utils.unitofwork import IUnitOfWork 
+from app.utils.cache_service import UserCache, UserStates
 from app.wa_hooks.bot_menu_service import BotMenuService
 from app.config.logger_settings import get_logger
 from app.services.rag_service import AskRagForRecipe
@@ -48,7 +49,7 @@ def get_rag_service(request: Request) -> AskRagForRecipe:
 
 
 BotMenuServiceDep = Annotated[BotMenuService, Depends(get_bot_menu_service)]
-UserStatesDep = Annotated[dict, Depends(get_user_states)]
+UserStatesDep = Annotated[UserStates, Depends(get_user_states)]
 UserCacheDep = Annotated[dict, Depends(get_user_cache)]
 UOWDep = Annotated[IUnitOfWork, Depends(get_unit_of_work)]
 AskRagForRecipeDep = Annotated[AskRagForRecipe, Depends(get_rag_service)]

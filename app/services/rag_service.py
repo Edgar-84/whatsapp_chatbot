@@ -1,11 +1,19 @@
 import re
 import csv
+import html
 import httpx
 from supabase import AsyncClient
 from app.config.logger_settings import get_logger
 from app.api.dtos.recipe_user_preferences_dto import RecipeUserPreferencesDTO
 
 logger = get_logger("rag_service")
+
+
+
+def clean_text(text: str) -> str:
+    if not text:
+        return ""
+    return html.unescape(text.replace('\\\'', "'").replace('\r\n', '\n').replace('\n\n', '\n'))
 
 
 class RagService:
@@ -115,24 +123,21 @@ class AskRagForRecipe(RagService):
         recipes = response.data  # This is a list of dicts
         return recipes
 
-    async def ask_recipe(self, client_response: RecipeUserPreferencesDTO) -> str:
+    async def ask_recipe(self, client_response: RecipeUserPreferencesDTO) -> tuple[list[str, str], int, str]:
         client_response = client_response.model_dump()
         logger.info(f" ===> Client request for RAG: {client_response}")
         query_embedding = await self._get_query_embedding(client_response)
-        # logger.info(f"Guery embedding: {query_embedding}")
         similar_recipes = await self._search_similar_embeddings(query_embedding)
 
-        # NEW
         recipe_ids = [int(r["recipe_id"]) for r in similar_recipes]
-
-        # recipes = self.get_recipes_from_csv_by_ids(self._csv_file_path, recipe_ids)
         recipes = await self._load_recipes_from_db(recipe_ids)
 
-        # END new
         banned_foods = client_response.get("banned_foods", [])
+        disliked_recipes_id = client_response.get("disliked_recipes_id", [])
         logger.info(f"Banned foods: {banned_foods}")
+        logger.info(f"Disliked recipes: {disliked_recipes_id}")
         logger.info(f"Recipes: {recipes[:10]}")
-        filtered_recipes = self._filter_recipes(recipes, banned_foods)
+        filtered_recipes = self._filter_recipes(recipes, banned_foods, disliked_recipes_id)
         for i in filtered_recipes:
             logger.debug(f"Filtered recipe {i}")
 
@@ -147,16 +152,35 @@ class AskRagForRecipe(RagService):
             logger.warning(f"Recipe ID {recipe_id} not found in filtered recipes.")
             return result_after_asc_ai, recipe_id, "Not found"  # fallback
 
+        # preparation = selected_recipe.get('preparation_method', '').replace('\r\n', '\n')
+        preparation = clean_text(selected_recipe.get('preparation_method', ''))
+        ingredients = clean_text(selected_recipe.get('ingredients', '')).replace(';', '\n')
+        nut_recommend = clean_text(selected_recipe.get('nut_recommend', ''))
+        comment = clean_text(selected_recipe.get('comment', ''))
         recipe_details = (
-            f"\n\n*Selected Recipe:*\n"
+            f"\n\n*🍽 Recipe structure:*\n"
             f"*Name:* {selected_recipe.get('name')}\n"
-            f"*Preparation Time:* {selected_recipe.get('minutes')} minutes\n"
-            f"*Foods:* {selected_recipe.get('foods')}\n"
-            f"*Ingredients:* {selected_recipe.get('ingredients')}\n"
-            # f"*Preparation Method:* {selected_recipe.get('preparation_method')}"
+            f"*Sub title:* {selected_recipe.get('sub_title', '')}\n"
+            f"*Meal type:* {selected_recipe.get('meal_type', '')}\n"
+            f"*Minutes:* {selected_recipe.get('minutes', '')}\n"
+            f"*Preparation Method:*\n{preparation}\n"
+            f"*Ingredients:*\n{ingredients}\n"
+            f"*Nut recommend:*\n{nut_recommend}\n"
+            f"*Comment:*\n{comment}\n"
         )
+        # recipe_details = (
+        #     f"\n\n*Recipe structure:*\n"
+        #     f"*Name:* {selected_recipe.get('name')}\n"
+        #     f"*Sub title:* {selected_recipe.get('sub_title', '')}\n"
+        #     f"*Meal type:* {selected_recipe.get('meal_type', '')}\n"
+        #     f"*Minutes:* {selected_recipe.get('minutes', '')}\n"
+        #     f"*Preparation Method:*\n{preparation}\n"
+        #     f"*Ingredients:* {selected_recipe.get('ingredients').replace(';', '\n')}\n"
+        #     f"*Nut recommend:* {selected_recipe.get('nut_recommend')}\n"
+        #     f"*Comment:* {selected_recipe.get('comment')}\n"
+        # )
 
-        final_response = result_after_asc_ai + recipe_details
+        final_response = [result_after_asc_ai, recipe_details]
         logger.debug(f"Final response:\n{final_response}\n Recipe_ID: {recipe_id}")
         return final_response, recipe_id, selected_recipe.get('name')
     
@@ -182,17 +206,23 @@ class AskRagForRecipe(RagService):
             return []
     
     @staticmethod
-    def _filter_recipes(candidate_recipes, banned_foods_list):
+    def _filter_recipes(candidate_recipes, banned_foods_list: list[str], disliked_recipes_id: list[int]):
         """
-        Filter recipes that contain banned foods
+        Filter recipes that contain banned foods or disliked recipes.
         """
-
         filtered = []
         for recipe in candidate_recipes:
+            if recipe["id"] in disliked_recipes_id:
+                # Skip recipes that are disliked
+                logger.info(f"Skipping recipe {recipe['id']} due to dislike")
+                continue
+
             # Assume recipe includes a field "ingredients" that is a string listing the ingredients.
             if any(banned.lower() in recipe["foods"].lower() for banned in banned_foods_list):
+                # Skip recipes that contain any banned ingredient
                 logger.debug(f"Skipping recipe {recipe['id']} due to banned ingredient")
-                continue  # skip recipes that contain any banned ingredient
+                continue
+
             filtered.append(recipe)
 
         return filtered
@@ -302,6 +332,15 @@ class AskRagForRecipe(RagService):
         additional_notes = client_response.get("additional_notes", "").strip()
         if additional_notes:
             prompt += f"- Additional Notes: {additional_notes}\n"
+
+        disliked_comments = client_response.get("disliked_recipes_comments", [])
+        if disliked_comments:
+            prompt += (
+                "- Below are some of the client's comments on previously disliked recipes.\n"
+                "  Use this only if the comments are clear and helpful for understanding preferences. "
+                "Ignore them if they seem irrelevant or ambiguous.\n"
+                f"  {', '.join(disliked_comments)}\n"
+            )
 
         prompt += "\nAvailable Recipes:\n"
         for idx, recipe in enumerate(recipes, start=1):

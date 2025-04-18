@@ -7,10 +7,23 @@ class BotMenuService:
         self.message_client = message_client
     
     @staticmethod
-    async def __format_grouped_foods(grouped_foods: list[dict[str, list[str]]]) -> str:
+    async def __format_grouped_foods_with_group(grouped_foods: list[dict[str, list[str]]]) -> str:
         lines = []
         for group in grouped_foods:
             line = f"{group['food_group_name']}:  {', '.join(group['foods'])}"
+            lines.append(line)
+
+        return "\n".join(lines)
+    
+    @staticmethod
+    async def __format_grouped_foods(grouped_foods: list[dict[str, list[str]]]) -> str:
+        lines = []
+        foods = []
+        for group in grouped_foods:
+            foods.extend(group['foods'])
+        
+        for food in foods:
+            line = f"{food}"
             lines.append(line)
 
         return "\n".join(lines)
@@ -209,7 +222,7 @@ class BotMenuService:
     async def send_shopping_list_recipe_after_like(self, whatsapp_number: str, recipe_ingredients: str, recipe_name: str):
         recipe_ingredients = await self.__format_grouped_foods(recipe_ingredients)
         menu_text = (
-            f"*Here’s your shopping list for {recipe_name}*\n\n"
+            f"🛒Here’s your shopping list for *{recipe_name}*\n\n"
             f"{recipe_ingredients}\n\n"
             # "0️⃣ 🔝 Back to Main Menu\n"
         )
