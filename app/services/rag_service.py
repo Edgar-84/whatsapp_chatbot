@@ -216,12 +216,25 @@ class AskRagForRecipe(RagService):
                 # Skip recipes that are disliked
                 logger.info(f"Skipping recipe {recipe['id']} due to dislike")
                 continue
+            
+            # Check wrong recipes
+            if recipe["foods"] is None:
+                logger.critical(f"Catch recipe without foods: {recipe}")
+                continue
 
             # Assume recipe includes a field "ingredients" that is a string listing the ingredients.
             if any(banned.lower() in recipe["foods"].lower() for banned in banned_foods_list):
                 # Skip recipes that contain any banned ingredient
                 logger.debug(f"Skipping recipe {recipe['id']} due to banned ingredient")
                 continue
+
+        filtered.append(recipe)
+
+    return filtered
+
+        filtered.append(recipe)
+
+    return filtered
 
             filtered.append(recipe)
 
