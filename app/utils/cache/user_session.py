@@ -42,7 +42,8 @@ class UserSession:
                     "high_sensitivity_foods": None,
                     "low_sensitivity_foods": None,
                     "all_restriction_products": None,
-                    "recipes_list_for_llm_research": None,
+                    "recipes_list_for_llm_research": None, # All recipes for LLM research without selected AI recipe
+                    "llm_recipe_index": 0,
                 }
 
     async def get(self, key: str):
@@ -130,6 +131,32 @@ class UserSession:
     
     async def set_recipes_list_for_llm_research(self, recipes_list_for_llm_research: list[dict]):
         await self.set("recipes_list_for_llm_research", recipes_list_for_llm_research)
+    
+    async def get_llm_recipe_index(self) -> int:
+        return await self.get("llm_recipe_index") or 0
+
+    async def set_llm_recipe_index(self, index: int):
+        await self.set("llm_recipe_index", index)
+
+    async def get_next_llm_recipe(self) -> Optional[dict]:
+        recipe_list = await self.get_recipes_list_for_llm_research()
+        if not recipe_list:
+            return None
+
+        index = await self.get_llm_recipe_index()
+
+        while index < len(recipe_list):
+            recipe = recipe_list[index]
+            # current_id = await self.get_get_recipe_id()
+            recipe_id = recipe.get("id")
+            await self.set_get_recipe_id(recipe_id)
+            await self.set_llm_recipe_index(index + 1)
+            return recipe
+
+            # if recipe_id != current_id:
+            #     return recipe
+
+        return None  # if reached the end of the list
     
     async def delete(self):
         self._data = None

@@ -351,7 +351,15 @@ async def reply(
                     await user_session.set_state(UserStates.SHOW_PERSONALIZED_RECIPES_MENU)
                     await user_session.set_get_recipe_id(int(final_answer_recipe.ai_result_recipe_id))
                     await user_session.set_get_recipe_name(final_answer_recipe.ai_result_recipe_name)
-                    await user_session.set_recipes_list_for_llm_research(final_answer_recipe.recipes_after_filter)
+                    logger.info(f"Before filter: {final_answer_recipe.recipes_after_filter}")
+                    logger.info(f"ID for selected: {final_answer_recipe.ai_result_recipe_id}")
+                    filtered_selected = [recipe for recipe in final_answer_recipe.recipes_after_filter if recipe["id"] != int(final_answer_recipe.ai_result_recipe_id)]
+                    await user_session.set_recipes_list_for_llm_research(filtered_selected)
+                    await user_session.set_llm_recipe_index(0)
+
+                    # TODO for test
+                    info_about_all_recipes = await user_session.get_recipes_list_for_llm_research()
+                    logger.debug(f"Info about all recipes [filtered]: {info_about_all_recipes}")
                     
                     # ai_recommendation, selected_recipe = personalized_recipe
                     await bot_menu_service.send_personalized_recipes_rag_menu(whatsapp_number, final_answer_recipe.ai_result_recomendation)
@@ -373,7 +381,7 @@ async def reply(
                     await bot_menu_service.send_promt_with_txt_file(whatsapp_number, prompt_link)
                     # await bot_menu_service.send_prompt_in_two_parts(whatsapp_number, final_answer_recipe.prompt_for_llm)
                     # TODO END Debug part
-
+                    await asyncio.sleep(1.5)
                     await bot_menu_service.send_asc_quality_result_recipes_menu(whatsapp_number)
 
         case UserStates.USER_WAITING_ANSWER:
@@ -408,10 +416,29 @@ async def reply(
                 case "2":
                     # await user_states.set(whatsapp_number, UserStates.ASK_WHY_DISLIKE)
                     await user_session.set_state(UserStates.ASK_WHY_DISLIKE)
-                    await bot_menu_service.send_question_why_dislike(whatsapp_number)                    
+                    await bot_menu_service.send_question_why_dislike(whatsapp_number)
+
+                case "3":
+                    next_llm_recipe = await user_session.get_next_llm_recipe()
+                    logger.info(f"Next LLM Recipe: {next_llm_recipe}")
+                    if not next_llm_recipe:
+                        await bot_menu_service.send_message(whatsapp_number, "You have viewed all available recipes under your previous request!")
+                        await asyncio.sleep(1.5)
+                        await bot_menu_service.send_asc_quality_result_recipes_menu_without_3(whatsapp_number)
+                    
+                    else:
+                        recipe_info = await rag_service.get_recipe_info_message(recipe=next_llm_recipe)
+                        await bot_menu_service.send_message(whatsapp_number, recipe_info)
+                        await asyncio.sleep(1.5)
+                        await bot_menu_service.send_asc_quality_result_recipes_menu(whatsapp_number)
+
+                case "0":
+                    await user_session.set_state(UserStates.MAIN_MENU)
+                    await bot_menu_service.send_main_menu(whatsapp_number)
+
                 case _:
                     await bot_menu_service.send_message(
-                        whatsapp_number, "❌ Invalid option. Please select necessary option *(from 1 to 2)*."
+                        whatsapp_number, "❌ Invalid option. Please select necessary option *(from 1 to 4)*."
                     )
 
         case UserStates.ASK_WHY_DISLIKE:

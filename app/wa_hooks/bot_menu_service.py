@@ -111,6 +111,18 @@ class BotMenuService:
         )
         await self.message_client.send_message(whatsapp_number, menu_text)
 
+    async def send_asc_quality_result_recipes_menu_without_3(self, whatsapp_number: str):
+            """
+            Send message to user about select Like or Dislike recipe
+            """
+
+            menu_text = (
+                "*What would you like to do?*\n\n"
+                "1️⃣ Like Recipe\n"
+                "2️⃣ Dislike Recipe\n"
+                "0️⃣ Back to main menu\n"
+            )
+            await self.message_client.send_message(whatsapp_number, menu_text)
 
     async def send_asc_quality_result_recipes_menu(self, whatsapp_number: str):
         """
@@ -121,11 +133,10 @@ class BotMenuService:
             "*What would you like to do?*\n\n"
             "1️⃣ Like Recipe\n"
             "2️⃣ Dislike Recipe\n"
+            "3️⃣ Generate new recipe\n"
+            "0️⃣ Back to main menu\n"
         )
         await self.message_client.send_message(whatsapp_number, menu_text)
-
-    # async def send_personalized_recipes_menu(self, whatsapp_number: str, recipes: list[RecipeDTO] = None):
-    #     if not recipes:
     #         menu_text = (
     #             f"*Personalized Recipes*\n"
     #             "No personalized recipes found for this user, please contact support.\n"
