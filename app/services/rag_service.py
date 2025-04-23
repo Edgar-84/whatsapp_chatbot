@@ -5,6 +5,8 @@ import httpx
 from supabase import AsyncClient
 from app.config.logger_settings import get_logger
 from app.api.dtos.recipe_user_preferences_dto import RecipeUserPreferencesDTO
+from app.api.dtos.ask_recipe_dtos import AskRecipeAnswerDTO
+
 
 logger = get_logger("rag_service")
 
@@ -116,73 +118,20 @@ class AskRagForRecipe(RagService):
         self._source_table = "recipes_view_data"
         super().__init__(openai_key)
     
-    async def _load_recipes_from_db(self, recipe_ids: list[int]) -> list[dict[str, str]]:
+    async def get_recipe_info_message(self, recipe: dict) -> str:
         """
-        Load recipes from Supabase table 'recipes_view_data'
+        Prepare message for WhatsApp with recipe info
         """
-        response = await self._supabase_client.table(self._source_table).select("*").execute()
-        if not recipe_ids:
-            return []
 
-        response = await self._supabase_client.table(self._source_table).select("*").in_("id", recipe_ids).execute()    
-        recipes = response.data  # This is a list of dicts
-        return recipes
+        preparation = clean_text(recipe.get('preparation_method', '')).replace('\\r\\n', '\n')
+        ingredients = clean_text(recipe.get('ingredients', '')).replace(';', '\n')
+        nut_recommend = clean_text(recipe.get('nut_recommend', '')).replace('\\r\\n', '\n')
+        comment = clean_text(recipe.get('comment', '')).replace('\\r\\n', '\n')
 
-    async def ask_recipe(self, client_response: RecipeUserPreferencesDTO) -> tuple[list[str, str], int, str]:
-        client_response = client_response.model_dump()
-        logger.info(f" ===> Client request for RAG: {client_response}")
-        query_embedding = await self._get_query_embedding(client_response)
-        similar_recipes = await self._search_similar_embeddings(query_embedding)
-
-        recipe_ids = [int(r["recipe_id"]) for r in similar_recipes]
-        recipes = await self._load_recipes_from_db(recipe_ids)
-
-        banned_foods = client_response.get("banned_foods", [])
-        disliked_recipes_id = client_response.get("disliked_recipes_id", [])
-        logger.info(f"Banned foods: {banned_foods}")
-        logger.info(f"Disliked recipes: {disliked_recipes_id}")
-        logger.info(f"Recipes: {recipes[:10]}")
-        filtered_recipes = self._filter_recipes(recipes, banned_foods, disliked_recipes_id)
-        for i in filtered_recipes:
-            logger.debug(f"Filtered recipe {i}")
-
-        logger.info(f"Filtered recipes count: {len(filtered_recipes)}")
-        result_after_asc_ai, recipe_id = await self._ask_openai_for_best_recipe(filtered_recipes, client_response)
-        logger.debug(f"Result after ASC AI:\n{result_after_asc_ai}\n Recipe_ID: {recipe_id}")
-
-        selected_recipe = next((r for r in filtered_recipes if r["id"] == int(recipe_id)), None)
-        logger.debug(f"Selected recipe: {selected_recipe}")
-
-        if not selected_recipe:
-            logger.warning(f"Recipe ID {recipe_id} not found in filtered recipes.")
-            return result_after_asc_ai, recipe_id, "Not found"  # fallback
-
-
-        # preparation = clean_text(selected_recipe.get('preparation_method', ''))
-        # ingredients = clean_text(selected_recipe.get('ingredients', '')).replace(';', '\n')
-        # nut_recommend = clean_text(selected_recipe.get('nut_recommend', ''))
-        # comment = clean_text(selected_recipe.get('comment', ''))
-        # recipe_details = (
-        #     f"\n\n*🍽 Recipe structure:*\n"
-        #     f"*Name:* {selected_recipe.get('name')}\n"
-        #     f"*Sub title:* {selected_recipe.get('sub_title', '')}\n"
-        #     f"*Meal type:* {selected_recipe.get('meal_type', '')}\n"
-        #     f"*Minutes:* {selected_recipe.get('minutes', '')}\n"
-        #     f"*Preparation Method:*\n{preparation}\n"
-        #     f"*Ingredients:*\n{ingredients}\n"
-        #     f"*Nut recommend:*\n{nut_recommend}\n"
-        #     f"*Comment:*\n{comment}\n"
-        # )
-
-        preparation = clean_text(selected_recipe.get('preparation_method', '')).replace('\\r\\n', '\n')
-        ingredients = clean_text(selected_recipe.get('ingredients', '')).replace(';', '\n')
-        nut_recommend = clean_text(selected_recipe.get('nut_recommend', '')).replace('\\r\\n', '\n')
-        comment = clean_text(selected_recipe.get('comment', '')).replace('\\r\\n', '\n')
-
-        name = clean_text(selected_recipe.get('name', ''))
-        sub_title = clean_text(selected_recipe.get('sub_title', ''))
-        meal_type = clean_text(selected_recipe.get('meal_type', '')).replace(';', ', ')
-        minutes = selected_recipe.get('minutes', '')
+        name = clean_text(recipe.get('name', ''))
+        sub_title = clean_text(recipe.get('sub_title', ''))
+        meal_type = clean_text(recipe.get('meal_type', '')).replace(';', ', ')
+        minutes = recipe.get('minutes', '')
 
         recipe_details = (
             f"\n\n*🍽 Recipe structure:*\n"
@@ -195,18 +144,105 @@ class AskRagForRecipe(RagService):
             f"*Nut recommend:*\n{nut_recommend}\n"
             f"*Comment:*\n{comment}\n"
         )
-
-        final_response = [result_after_asc_ai, recipe_details]
-        logger.debug(f"Final response:\n{final_response}\n Recipe_ID: {recipe_id}")
-        return final_response, recipe_id, selected_recipe.get('name')
+        return recipe_details
     
-    async def _search_similar_embeddings(self, query_embedding: list[float]) -> list[str]:
+    async def _load_recipes_from_db(self, recipe_ids: list[int]) -> list[dict[str, str]]:
+        """
+        Load recipes from Supabase table 'recipes_view_data'
+        """
+        response = await self._supabase_client.table(self._source_table).select("*").execute()
+        if not recipe_ids:
+            return []
+
+        response = await self._supabase_client.table(self._source_table).select("*").in_("id", recipe_ids).execute()    
+        recipes = response.data  # This is a list of dicts
+        return recipes
+
+    async def ask_recipe(self, client_response: RecipeUserPreferencesDTO) -> AskRecipeAnswerDTO: #tuple[list[str, str], int, str]:
+        final_answer = AskRecipeAnswerDTO()
+
+        client_response = client_response.model_dump()
+        logger.info(f" ===> Client request for RAG: {client_response}")
+        query_embedding = await self._get_query_embedding(client_response)
+        similar_recipes = await self._search_similar_embeddings(
+            query_embedding=query_embedding,
+            match_count=10
+        )
+    
+        recipe_ids = [int(r["recipe_id"]) for r in similar_recipes]
+        final_answer.recipes_id_from_rag = recipe_ids # Add recipes id from RAG
+        recipes = await self._load_recipes_from_db(recipe_ids)
+
+        banned_foods = client_response.get("banned_foods", [])
+        disliked_recipes_id = client_response.get("disliked_recipes_id", [])
+        logger.info(f"Banned foods: {banned_foods}")
+        logger.info(f"Disliked recipes: {disliked_recipes_id}")
+        logger.info(f"Recipes: {recipes[:10]}")
+        filtered_recipes, filtered_disliked_id, filtered_banned_id = self._filter_recipes(recipes, banned_foods, disliked_recipes_id)
+        for i in filtered_recipes:
+            logger.debug(f"Filtered recipe {i}")
+
+        final_answer.recipes_after_filter = filtered_recipes
+        final_answer.recipes_id_after_filter = [r["id"] for r in filtered_recipes]
+        final_answer.filtered_disliked_recipes_id = filtered_disliked_id
+        final_answer.filtered_restrictions_recipes_id = filtered_banned_id
+
+        logger.info(f"Filtered recipes count: {len(filtered_recipes)}")
+        result_after_asc_ai, recipe_id, prompt_for_llm = await self._ask_openai_for_best_recipe(filtered_recipes, client_response)
+        final_answer.ai_result_recomendation = result_after_asc_ai
+        final_answer.ai_result_recipe_id = recipe_id
+        final_answer.prompt_for_llm = prompt_for_llm
+
+        logger.debug(f"Result after ASC AI:\n{result_after_asc_ai}\n Recipe_ID: {recipe_id}")
+
+        selected_recipe = next((r for r in filtered_recipes if r["id"] == int(recipe_id)), None)
+        logger.debug(f"Selected recipe: {selected_recipe}")
+
+        if not selected_recipe:
+            logger.critical(f"Recipe ID {recipe_id} not found in filtered recipes.")
+            raise Exception(f"Recipe ID {recipe_id} not found in filtered recipes.")
+            # TODO check for empty data
+            return result_after_asc_ai, recipe_id, "Not found"  # fallback
+
+        # preparation = clean_text(selected_recipe.get('preparation_method', '')).replace('\\r\\n', '\n')
+        # ingredients = clean_text(selected_recipe.get('ingredients', '')).replace(';', '\n')
+        # nut_recommend = clean_text(selected_recipe.get('nut_recommend', '')).replace('\\r\\n', '\n')
+        # comment = clean_text(selected_recipe.get('comment', '')).replace('\\r\\n', '\n')
+
+        # name = clean_text(selected_recipe.get('name', ''))
+        # sub_title = clean_text(selected_recipe.get('sub_title', ''))
+        # meal_type = clean_text(selected_recipe.get('meal_type', '')).replace(';', ', ')
+        # minutes = selected_recipe.get('minutes', '')
+
+        # recipe_details = (
+        #     f"\n\n*🍽 Recipe structure:*\n"
+        #     f"*Name:* {name}\n"
+        #     f"*Sub title:* {sub_title}\n"
+        #     f"*Meal type:* {meal_type}\n"
+        #     f"*Minutes:* {minutes}\n"
+        #     f"*Preparation Method:*\n{preparation}\n"
+        #     f"*Ingredients:*\n{ingredients}\n"
+        #     f"*Nut recommend:*\n{nut_recommend}\n"
+        #     f"*Comment:*\n{comment}\n"
+        # )
+
+        recipe_details = await self.get_recipe_info_message(selected_recipe)
+        final_answer.ai_result_recipe_details = recipe_details
+        final_answer.ai_result_recipe_name = selected_recipe.get('name')
+        logger.debug(f"Final response: {final_answer}")
+        return final_answer
+
+        # final_response = [result_after_asc_ai, recipe_details]
+        # logger.debug(f"Final response:\n{final_response}\n Recipe_ID: {recipe_id}")
+        # return final_response, recipe_id, selected_recipe.get('name')
+    
+    async def _search_similar_embeddings(self, query_embedding: list[float], match_count: int = 10) -> list[str]:
         """
         Search for similar embeddings in Supabase using cosine similarity
         """
         response_data = await self._supabase_client.rpc("match_recipes",{
                 "query_embedding": query_embedding,
-                "match_count": 10
+                "match_count": match_count
             }).execute()
         logger.info(f"Resp: {response_data}")
         response_data = response_data.data
@@ -222,15 +258,18 @@ class AskRagForRecipe(RagService):
             return []
     
     @staticmethod
-    def _filter_recipes(candidate_recipes, banned_foods_list: list[str], disliked_recipes_id: list[int]):
+    def _filter_recipes(candidate_recipes, banned_foods_list: list[str], disliked_recipes_id: list[int]) -> tuple[list[dict], list[int], list[int]]:
         """
         Filter recipes that contain banned foods or disliked recipes.
         """
         filtered = []
+        filtered_disliked = []
+        filtered_banned = []
         for recipe in candidate_recipes:
             if recipe["id"] in disliked_recipes_id:
                 # Skip recipes that are disliked
                 logger.info(f"Skipping recipe {recipe['id']} due to dislike")
+                filtered_disliked.append(recipe["id"])
                 continue
             
             # Check wrong recipes
@@ -242,11 +281,12 @@ class AskRagForRecipe(RagService):
             if any(banned.lower() in recipe["foods"].lower() for banned in banned_foods_list):
                 # Skip recipes that contain any banned ingredient
                 logger.debug(f"Skipping recipe {recipe['id']} due to banned ingredient")
+                filtered_banned.append(recipe["id"])
                 continue
 
             filtered.append(recipe)
 
-        return filtered
+        return filtered, filtered_disliked, filtered_banned
 
     async def _get_query_embedding(self, client_response: dict[str, str]) -> list[float]:
         query_text = self.__build_query_text(
@@ -344,7 +384,15 @@ class AskRagForRecipe(RagService):
 
         included_ingredients = client_response.get("include_ingredients", "").strip()
         if included_ingredients:
-            prompt += f"- Must Include Ingredients: {included_ingredients[:350]}\n" # For case if user try to send long message
+            prompt += (
+                "- Below are some of the client's Must Include Ingredients.\n"
+                "Use this only if the these ingredients are clear and helpful for understanding preferences. "
+                "Ignore them if they seem irrelevant or ambiguous:\n"
+                f"{included_ingredients[:350]}\n"
+            )
+        else:
+            prompt += "- User doesn't add Must Include Ingredients\n"
+            # prompt += f"- Must Include Ingredients: {included_ingredients[:350]}\n" # For case if user try to send long message
 
         banned_foods = client_response.get("banned_foods", [])
         if banned_foods:
@@ -379,7 +427,7 @@ class AskRagForRecipe(RagService):
 
         return prompt
 
-    async def _ask_openai_for_best_recipe(self, recipes, client_response):
+    async def _ask_openai_for_best_recipe(self, recipes, client_response) -> tuple[str, int, str]:
         prompt = self._prepare_ai_prompt(recipes, client_response)
         url = "https://api.openai.com/v1/chat/completions"
         headers = {
@@ -414,7 +462,9 @@ class AskRagForRecipe(RagService):
         cost_prompt = (prompt_tokens / 1000) * 0.01
         cost_completion = (completion_tokens / 1000) * 0.03
         total_cost = cost_prompt + cost_completion
-        logger.info(f"OpenAI Token Usage — Prompt: {prompt_tokens}, Completion: {completion_tokens}, Total: {total_tokens}")
+        count_tokens_info = f"OpenAI Token Usage — Prompt: {prompt_tokens}, Completion: {completion_tokens}, Total: {total_tokens}"
+        prompt += f"\n\n{count_tokens_info}"
+        logger.info(count_tokens_info)
         logger.info(f"Estimated Cost: ${total_cost:.4f}")
 
         message = data["choices"][0]["message"]["content"]
@@ -429,4 +479,4 @@ class AskRagForRecipe(RagService):
         ltr_fix = "\u200E"
         cleaned_message = ltr_fix + cleaned_message
 
-        return cleaned_message, recipe_id
+        return cleaned_message, recipe_id, prompt

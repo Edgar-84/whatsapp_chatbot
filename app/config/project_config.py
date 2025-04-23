@@ -17,5 +17,9 @@ class ProjectSettings(BaseSettings):
     SUPABASE_URL: str = config("SUPABASE_URL")
     SUPABASE_KEY: str = config("SUPABASE_KEY")
     OPENAI_API_KEY: str = config("OPENAI_API_KEY")
+    GOOGLE_CLIENT_ID: str = config("GOOGLE_CLIENT_ID")
+    GOOGLE_CREDENTIAL_JSON_PATH: str = os.path.join(BASE_DIR, "client_secret.json")
+    GOOGLE_TOKEN_PICKLE_PATH: str = os.path.join(BASE_DIR, "token.pickle")
+    PROMPT_DIR: str = os.path.join(BASE_DIR, "prompts")
 
 project_settings = ProjectSettings()

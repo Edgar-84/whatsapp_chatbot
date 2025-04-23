@@ -6,6 +6,7 @@ from app.utils.cache.ttl_cache import InMemoryUserCache
 from app.wa_hooks.bot_menu_service import BotMenuService
 from app.config.logger_settings import get_logger
 from app.services.rag_service import AskRagForRecipe
+from app.services.google_upload_file_service import GoogleDriveService
 
 
 logger = get_logger("dependencies")
@@ -22,6 +23,7 @@ def get_bot_menu_service(request: Request) -> BotMenuService:
 def get_unit_of_work(request: Request) -> IUnitOfWork:
     return request.app.state.uow
 
+
 def get_user_cache(request: Request) -> InMemoryUserCache:
     return request.app.state.user_cache
 
@@ -30,8 +32,13 @@ def get_rag_service(request: Request) -> AskRagForRecipe:
     return request.app.state.rag_service
 
 
+def get_google_driver_service(request: Request) -> GoogleDriveService:
+    return request.app.state.google_drive_service
+
+
 BotMenuServiceDep = Annotated[BotMenuService, Depends(get_bot_menu_service)]
 UserStatesDep = Annotated[dict, Depends(get_user_states)]
 UserCacheDep = Annotated[InMemoryUserCache, Depends(get_user_cache)]
 UOWDep = Annotated[IUnitOfWork, Depends(get_unit_of_work)]
 AskRagForRecipeDep = Annotated[AskRagForRecipe, Depends(get_rag_service)]
+GoogleDriveServiceDep = Annotated[GoogleDriveService, Depends(get_google_driver_service)]

@@ -7,6 +7,7 @@ from app.routes import get_apps_router
 from app.utils.unitofwork import IUnitOfWork, UnitOfWork
 from app.utils.cache.ttl_cache import InMemoryUserCache
 # from app.utils.cache.user_session import UserSession, UserStates
+from app.services.google_upload_file_service import GoogleDriveService
 from app.wa_hooks.message_hooks import MessageClient
 from app.wa_hooks.bot_menu_service import BotMenuService
 from app.config.logger_settings import get_logger
@@ -16,6 +17,13 @@ from app.services.rag_service import AskRagForRecipe
 
 
 logger = get_logger("main")
+
+
+
+def create_google_driver_service() -> GoogleDriveService:
+    logger.info(f"Creating [GoogleDriveService]...")
+    google_drive_service = GoogleDriveService()
+    return google_drive_service
 
 
 def create_rag_service(supabase_client) -> AskRagForRecipe:
@@ -63,6 +71,7 @@ async def lifespan(app: FastAPI):
     app.state.uow = create_uow_client(supabase_client)
     sup_client = await supabase_client.get_client()
     app.state.rag_service = create_rag_service(sup_client)
+    app.state.google_drive_service = create_google_driver_service()
 
     yield
 

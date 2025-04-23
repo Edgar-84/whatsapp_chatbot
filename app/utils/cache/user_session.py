@@ -42,6 +42,7 @@ class UserSession:
                     "high_sensitivity_foods": None,
                     "low_sensitivity_foods": None,
                     "all_restriction_products": None,
+                    "recipes_list_for_llm_research": None,
                 }
 
     async def get(self, key: str):
@@ -123,6 +124,12 @@ class UserSession:
     
     async def set_get_recipe_name(self, recipe_name: str):
         await self.set("get_recipe_name", recipe_name)
+    
+    async def get_recipes_list_for_llm_research(self):
+        return await self.get("recipes_list_for_llm_research")
+    
+    async def set_recipes_list_for_llm_research(self, recipes_list_for_llm_research: list[dict]):
+        await self.set("recipes_list_for_llm_research", recipes_list_for_llm_research)
     
     async def delete(self):
         self._data = None

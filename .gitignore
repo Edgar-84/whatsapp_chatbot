@@ -10,7 +10,9 @@ venv/
 
 # Log files
 *.log
-
+prompt_*.txt
+token.pickle
+client_secret.json
 # Package files
 *.jar
 

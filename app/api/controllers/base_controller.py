@@ -3,13 +3,14 @@ from fastapi import APIRouter, Depends, HTTPException, Form, Request
 
 from app.utils.cache.user_session import UserSession, UserStates
 from app.services.ascii_service import ASCIIService
+from app.services.google_upload_file_service import GoogleDriveService
 from app.dependencies import (
     BotMenuServiceDep,
     UserStatesDep,
     UOWDep,
     UserCacheDep,
-    # UserStates,
-    AskRagForRecipeDep
+    AskRagForRecipeDep,
+    GoogleDriveServiceDep
 )
 from app.api.dtos.recipe_user_preferences_dto import RecipeUserPreferencesDTO
 from app.api.dtos.user_dtos import UserDTO
@@ -37,9 +38,9 @@ async def reply(
     request: Request,
     uow: UOWDep,
     bot_menu_service: BotMenuServiceDep,
-    user_states: UserStatesDep,
     user_cache: UserCacheDep,
     rag_service: AskRagForRecipeDep,
+    google_drive_service: GoogleDriveServiceDep,
     Body: str = Form()
 ):
     form_data = await request.form()
@@ -343,21 +344,36 @@ async def reply(
                     
                     # Asc RAG for get recipes
                     user_recipe_preference = await user_session.get_user_recipe_preference()
-                    personalized_recipe, recipe_id, recipe_name = await rag_service.ask_recipe(user_recipe_preference) #user_cache[whatsapp_number]["user_recipe_preference"])
-                    logger.info(f"Catch RECIPE_ID and update in cash: {recipe_id}")
+                    # personalized_recipe, recipe_id, recipe_name = await rag_service.ask_recipe(user_recipe_preference) #user_cache[whatsapp_number]["user_recipe_preference"])
+                    final_answer_recipe = await rag_service.ask_recipe(user_recipe_preference)
+                    logger.info(f"Catch RECIPE_ID and update in cash: {final_answer_recipe.ai_result_recipe_id}")
                     # await user_states.set(whatsapp_number, UserStates.SHOW_PERSONALIZED_RECIPES_MENU)
                     await user_session.set_state(UserStates.SHOW_PERSONALIZED_RECIPES_MENU)
-                    # TODO create Class for save this info
-                    # user_cache[whatsapp_number]["get_recipe_id"] = int(recipe_id)
-                    # user_cache[whatsapp_number]["get_recipe_name"] = recipe_name
-                    await user_session.set_get_recipe_id(int(recipe_id))
-                    await user_session.set_get_recipe_name(recipe_name)
+                    await user_session.set_get_recipe_id(int(final_answer_recipe.ai_result_recipe_id))
+                    await user_session.set_get_recipe_name(final_answer_recipe.ai_result_recipe_name)
+                    await user_session.set_recipes_list_for_llm_research(final_answer_recipe.recipes_after_filter)
                     
-                    ai_recommendation, selected_recipe = personalized_recipe
-                    await bot_menu_service.send_personalized_recipes_rag_menu(whatsapp_number, ai_recommendation)
+                    # ai_recommendation, selected_recipe = personalized_recipe
+                    await bot_menu_service.send_personalized_recipes_rag_menu(whatsapp_number, final_answer_recipe.ai_result_recomendation)
                     await asyncio.sleep(1.5)
-                    await bot_menu_service.send_personalized_recipes_rag_menu(whatsapp_number, selected_recipe)
+                    await bot_menu_service.send_personalized_recipes_rag_menu(whatsapp_number, final_answer_recipe.ai_result_recipe_details)
                     await asyncio.sleep(1.5)
+
+                    # TODO INFO for Debug work LLM and RAG
+                    await bot_menu_service.send_info_for_debug(whatsapp_number, final_answer_recipe)
+                    await asyncio.sleep(0.5)
+
+                    prompt_link = await google_drive_service.upload_text_file(
+                        filename="prompt",
+                        content=final_answer_recipe.prompt_for_llm,
+                        delete_after_upload=False
+                    )
+
+                    logger.info(f"Prepare Link to prompt for LLM: {prompt_link}\nFor client: {whatsapp_number}")
+                    await bot_menu_service.send_promt_with_txt_file(whatsapp_number, prompt_link)
+                    # await bot_menu_service.send_prompt_in_two_parts(whatsapp_number, final_answer_recipe.prompt_for_llm)
+                    # TODO END Debug part
+
                     await bot_menu_service.send_asc_quality_result_recipes_menu(whatsapp_number)
 
         case UserStates.USER_WAITING_ANSWER:

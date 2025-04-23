@@ -1,6 +1,12 @@
+import asyncio
+
 from app.wa_hooks.message_hooks import MessageClient
 from app.api.dtos.recipes_dtos import RecipeDTO
+from app.api.dtos.ask_recipe_dtos import AskRecipeAnswerDTO
+from app.config.logger_settings import get_logger
 
+
+logger = get_logger("bot_menu_service")
 
 class BotMenuService:
     def __init__(self, message_client: MessageClient):
@@ -88,6 +94,24 @@ class BotMenuService:
         )
         await self.message_client.send_message(whatsapp_number, menu_text)
     
+    async def send_info_for_debug(self, whatsapp_number: str, final_answer_recipe: AskRecipeAnswerDTO):
+        menu_text = (
+            "*Info for analyse work LLM and RAG*\n\n"
+            f"*- Recipes ID after search in RAG:*\n{final_answer_recipe.recipes_id_from_rag}\n\n"
+            f"*- Filtered recipes ID after check Dicliked user recipes:*\n{final_answer_recipe.filtered_disliked_recipes_id}\n\n"
+            f"*- Filtered recipes ID after check Restrictions user recipes:*\n{final_answer_recipe.filtered_restrictions_recipes_id}\n\n"
+            f"*- Recipes for analyse with LLM:*\nCount: {len(final_answer_recipe.recipes_id_after_filter)}\nRecipes ID: {final_answer_recipe.recipes_id_after_filter}\n\n"
+        )
+        await self.message_client.send_message(whatsapp_number, menu_text)
+
+    async def send_promt_with_txt_file(self, whatsapp_number: str, link: str):
+        menu_text = (
+            "*Link to promt for LLM in this request*\n\n"
+            f"{link}"
+        )
+        await self.message_client.send_message(whatsapp_number, menu_text)
+
+
     async def send_asc_quality_result_recipes_menu(self, whatsapp_number: str):
         """
         Send message to user about select Like or Dislike recipe
