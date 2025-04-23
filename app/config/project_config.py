@@ -1,11 +1,12 @@
 import os
+import json
 from pathlib import Path
 from pydantic_settings import BaseSettings
 from decouple import config
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
-
+GOOGLE_CREDENTIAL_JSON = config("GOOGLE_CREDENTIAL_JSON")
 
 class ProjectSettings(BaseSettings):
     log_dir: str = os.path.join(BASE_DIR, "logs")
@@ -21,5 +22,6 @@ class ProjectSettings(BaseSettings):
     GOOGLE_CREDENTIAL_JSON_PATH: str = os.path.join(BASE_DIR, "client_secret.json")
     GOOGLE_TOKEN_PICKLE_PATH: str = os.path.join(BASE_DIR, "token.pickle")
     PROMPT_DIR: str = os.path.join(BASE_DIR, "prompts")
+    GOOGLE_CREDENTIAL_JSON: str = GOOGLE_CREDENTIAL_JSON
 
 project_settings = ProjectSettings()

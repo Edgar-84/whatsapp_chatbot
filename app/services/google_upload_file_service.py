@@ -1,4 +1,5 @@
 import os
+import json
 import asyncio
 import pickle
 from datetime import datetime
@@ -19,6 +20,7 @@ SCOPES = [
 
 CREDENTIALS_FILE = project_settings.GOOGLE_CREDENTIAL_JSON_PATH
 TOKEN_PICKLE = project_settings.GOOGLE_TOKEN_PICKLE_PATH
+GOOGLE_CREDENTIAL_JSON = project_settings.GOOGLE_CREDENTIAL_JSON
 
 
 class GoogleDriveService:
@@ -32,6 +34,13 @@ class GoogleDriveService:
     @lru_cache(maxsize=1)
     def _get_user_credentials():
         creds = None
+        credentials_json_str = GOOGLE_CREDENTIAL_JSON
+        
+        if credentials_json_str:
+            credentials_info = json.loads(credentials_json_str)
+        else:
+            raise ValueError("Did not find GOOGLE_CREDENTIAL_JSON.")
+        
         if os.path.exists(TOKEN_PICKLE):
             with open(TOKEN_PICKLE, 'rb') as token:
                 creds = pickle.load(token)
@@ -40,15 +49,35 @@ class GoogleDriveService:
             if creds and creds.expired and creds.refresh_token:
                 creds.refresh(Request())
             else:
-                flow = InstalledAppFlow.from_client_secrets_file(
-                    CREDENTIALS_FILE, SCOPES)
+                flow = InstalledAppFlow.from_client_config(credentials_info, SCOPES)
                 creds = flow.run_local_server(port=0)
 
-            # Save token
             with open(TOKEN_PICKLE, 'wb') as token:
                 pickle.dump(creds, token)
 
         return creds
+
+    # @staticmethod
+    # @lru_cache(maxsize=1)
+    # def _get_user_credentials():
+    #     creds = None
+    #     if os.path.exists(TOKEN_PICKLE):
+    #         with open(TOKEN_PICKLE, 'rb') as token:
+    #             creds = pickle.load(token)
+
+    #     if not creds or not creds.valid:
+    #         if creds and creds.expired and creds.refresh_token:
+    #             creds.refresh(Request())
+    #         else:
+    #             flow = InstalledAppFlow.from_client_secrets_file(
+    #                 CREDENTIALS_FILE, SCOPES)
+    #             creds = flow.run_local_server(port=0)
+
+    #         # Save token
+    #         with open(TOKEN_PICKLE, 'wb') as token:
+    #             pickle.dump(creds, token)
+
+    #     return creds
 
     async def upload_text_file(self, content: str, filename: str = "prompt", delete_after_upload: bool = False) -> str:
         # Save file localy
