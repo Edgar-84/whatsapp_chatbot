@@ -294,8 +294,8 @@ class AskRagForRecipe(RagService):
             dietary_pref=client_response.get("dietary_pref", "No preference"),
             include_ingredients=client_response.get("include_ingredients", ""),
             additional_notes=client_response.get("additional_notes", ""),
-            # banned_foods=client_response.get("banned_foods", "")
         )
+        logger.info(f"Query text for embeding: {query_text}")
         result = await self.get_embedding(query_text)
         # logger.debug(f"Embeding for query: {result}")
         return result
@@ -333,31 +333,80 @@ class AskRagForRecipe(RagService):
 
         return filtered_recipes
 
-    @staticmethod
     def __build_query_text(
-            meal_type: str,
-            dietary_pref: str,
-            include_ingredients: str,
-            additional_notes: str,
-            # banned_foods: str
-        ) -> str:
-        """
-        Build query text from client response
-        """
+        meal_type: str,
+        dietary_pref: str,
+        include_ingredients: str,
+        additional_notes: str,
+        language: str = "he",
+    ) -> str:
+            """
+            Build enriched query text for embedding search.
+            """
 
-        query_parts = [
-            f"Meal type: {meal_type}",
-            f"Dietary preference: {dietary_pref}",
-        ]
-        if include_ingredients:
-            query_parts.append(f"Must include at least one of them ingredients: {include_ingredients}")
-        if additional_notes:
-            query_parts.append(f"Additional requirements: {additional_notes}")
-        # if banned_foods:
-        #     query_parts.append(f"Must NOT include: {banned_foods}")
-        result = "\n".join(query_parts)
-        logger.debug(f"Result for client response: {result}")
-        return result
+            if language == "he":
+                parts = []
+
+                if include_ingredients:
+                    parts.append(
+                        f"אני מחפש מתכון שמבוסס על המרכיבים הבאים: {include_ingredients}. "
+                        f"המרכיבים האלו חשובים מאוד וחייבים להיות חלק מהמתכון. מתכונים שלא כוללים אותם – לא רלוונטיים עבורי."
+                    )
+
+                if meal_type and meal_type.lower() != "no preference":
+                    parts.append(f"סוג הארוחה הוא: {meal_type}.")
+
+                if dietary_pref and dietary_pref.lower() != "no preference":
+                    parts.append(f"העדפות תזונתיות: {dietary_pref}.")
+
+                if additional_notes:
+                    parts.append(f"הערות נוספות: {additional_notes}.")
+
+                return "\n".join(parts)
+
+            # Default: English
+            parts = []
+
+            if include_ingredients:
+                parts.append(
+                    f"I am looking for a recipe that is based on the following ingredients: {include_ingredients}. "
+                    f"These ingredients are essential and must be part of the recipe. Recipes without them are not relevant."
+                )
+
+            if meal_type and meal_type.lower() != "no preference":
+                parts.append(f"The meal type should be: {meal_type}.")
+
+            if dietary_pref and dietary_pref.lower() != "no preference":
+                parts.append(f"Dietary preference: {dietary_pref}.")
+
+            if additional_notes:
+                parts.append(f"Additional notes: {additional_notes}.")
+
+            return "\n".join(parts)
+
+    # @staticmethod
+    # def __build_query_text(
+    #         meal_type: str,
+    #         dietary_pref: str,
+    #         include_ingredients: str,
+    #         additional_notes: str,
+    #     ) -> str:
+    #     """
+    #     Build query text from client response
+    #     """
+
+    #     query_parts = [
+    #         f"Meal type: {meal_type}",
+    #         f"Dietary preference: {dietary_pref}",
+    #     ]
+    #     if include_ingredients:
+    #         query_parts.append(f"Must include at least one of them ingredients: {include_ingredients}")
+    #     if additional_notes:
+    #         query_parts.append(f"Additional requirements: {additional_notes}")
+
+    #     result = "\n".join(query_parts)
+    #     logger.debug(f"Result for client response: {result}")
+    #     return result
 
     def _prepare_ai_prompt(self, recipes, client_response):
         """

@@ -255,14 +255,14 @@ async def reply(
                     # await user_states.set(whatsapp_number, UserStates.DIETARY_PREFERENCE_FILTER)
                     await user_session.set_state(UserStates.DIETARY_PREFERENCE_FILTER)
                     meal_type = {
-                        "1": "Breakfast",
-                        "2": "Lunch",
-                        "3": "Dinner",
-                        "4": "Snack",
-                        "5": "Side Dish",
-                        "6": "Salads",
-                        "7": "Desserts",
-                        "8": "Soups"
+                        "1": "ארוחת בוקר", #"Breakfast",
+                        "2": "ארוחת צהריים", #"Lunch",
+                        "3": "ארוחת ערב", #"Dinner",
+                        "4": "נשנוש", #"Snack",
+                        "5": "תוספת", #"Side Dish",
+                        "6": "סלטים", #"Salads",
+                        "7": "קינוחים", #"Desserts",
+                        "8": "מרקים", #"Soups"
                     }[user_message]
                     # user_cache[whatsapp_number]["user_recipe_preference"].meal_type = meal_type
                     await user_session.update_user_recipe_preference(meal_type=meal_type)
@@ -281,10 +281,10 @@ async def reply(
             match user_message:
                 case "1" | "2" | "3" | "4" | "5":
                     dietary_preference = {
-                        "1": "Vegetarian",
-                        "2": "Vegan",
-                        "3": "High Protein",
-                        "4": "Low Carb",
+                        "1": "צִמחוֹנִי", #"Vegetarian",
+                        "2": "טִבעוֹנִי", #"Vegan",
+                        "3": "חלבון גבוה", #"High Protein",
+                        "4": "דל פחמימות", #"Low Carb",
                         "5": "No preference"
                     }[user_message]
                     
