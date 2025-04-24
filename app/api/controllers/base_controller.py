@@ -354,8 +354,8 @@ async def reply(
                     # personalized_recipe, recipe_id, recipe_name = await rag_service.ask_recipe(user_recipe_preference) #user_cache[whatsapp_number]["user_recipe_preference"])
                     final_answer_recipe = await rag_service.ask_recipe(user_recipe_preference)
                     logger.info(f"Catch RECIPE_ID and update in cash: {final_answer_recipe.ai_result_recipe_id}")
-                    # await user_states.set(whatsapp_number, UserStates.SHOW_PERSONALIZED_RECIPES_MENU)
-                    await user_session.set_state(UserStates.SHOW_PERSONALIZED_RECIPES_MENU)
+
+                    
                     await user_session.set_get_recipe_id(int(final_answer_recipe.ai_result_recipe_id))
                     await user_session.set_get_recipe_name(final_answer_recipe.ai_result_recipe_name)
                     logger.info(f"Before filter: {final_answer_recipe.recipes_after_filter}")
@@ -376,7 +376,7 @@ async def reply(
 
                     # TODO INFO for Debug work LLM and RAG
                     await bot_menu_service.send_info_for_debug(whatsapp_number, final_answer_recipe)
-                    await asyncio.sleep(0.5)
+                    await asyncio.sleep(1.5)
 
                     prompt_link = await google_drive_service.upload_text_file(
                         filename="prompt",
@@ -390,6 +390,7 @@ async def reply(
                     # TODO END Debug part
                     await asyncio.sleep(1.5)
                     await bot_menu_service.send_asc_quality_result_recipes_menu(whatsapp_number)
+                    await user_session.set_state(UserStates.SHOW_PERSONALIZED_RECIPES_MENU)
 
         case UserStates.USER_WAITING_ANSWER:
             # For block user message during work our logic
