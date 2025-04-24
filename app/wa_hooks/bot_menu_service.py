@@ -3,6 +3,7 @@ import asyncio
 from app.wa_hooks.message_hooks import MessageClient
 from app.api.dtos.recipes_dtos import RecipeDTO
 from app.api.dtos.ask_recipe_dtos import AskRecipeAnswerDTO
+from app.api.dtos.shopping_list_dtos import ShoppingListDTO
 from app.config.logger_settings import get_logger
 
 
@@ -98,7 +99,7 @@ class BotMenuService:
         menu_text = (
             "*Info for analyse work LLM and RAG*\n\n"
             f"*- Recipes ID after search in RAG:*\n{final_answer_recipe.recipes_id_from_rag}\n\n"
-            f"*- Filtered recipes ID after check Dicliked user recipes:*\n{final_answer_recipe.filtered_disliked_recipes_id}\n\n"
+            f"*- Filtered recipes ID after check Disliked user recipes:*\n{final_answer_recipe.filtered_disliked_recipes_id}\n\n"
             f"*- Filtered recipes ID after check Restrictions user recipes:*\n{final_answer_recipe.filtered_restrictions_recipes_id}\n\n"
             f"*- Recipes for analyse with LLM:*\nCount: {len(final_answer_recipe.recipes_id_after_filter)}\nRecipes ID: {final_answer_recipe.recipes_id_after_filter}\n\n"
         )
@@ -137,6 +138,16 @@ class BotMenuService:
             "0️⃣ Back to main menu\n"
         )
         await self.message_client.send_message(whatsapp_number, menu_text)
+    
+    async def send_shopping_list_choice_recipes(self, whatsapp_number: str, recipes: list[ShoppingListDTO]):
+        menu_text = "*\u200ESelect Liked recipe for get Shopping List*\n\n"
+        for index, recipe in enumerate(recipes, 1):
+            menu_text += f"*\u200E[{index}]* - {recipe.recipe_name}\n"
+        
+        menu_text += f"*\u200E[{len(recipes) + 1}]* - Show all recipes\n"
+        menu_text += "0️⃣ Back to main menu\n"
+        await self.message_client.send_message(whatsapp_number, menu_text)
+
     #         menu_text = (
     #             f"*Personalized Recipes*\n"
     #             "No personalized recipes found for this user, please contact support.\n"

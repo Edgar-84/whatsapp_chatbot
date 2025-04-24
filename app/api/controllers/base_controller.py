@@ -188,27 +188,34 @@ async def reply(
                     get_user_shopping_list = await ShoppingListService.get_user_shopping_lists(uow, user.id)
                     if len(get_user_shopping_list) == 0:
                         await bot_menu_service.send_message(whatsapp_number, "*You have no liked recipes in your shopping list!*")
-                    
+                        await user_session.set_state(UserStates.MAIN_MENU)
+                        await asyncio.sleep(1.5)
+                        await bot_menu_service.send_main_menu(whatsapp_number)
+
                     else:
-                        await bot_menu_service.send_message(whatsapp_number, "*Your shopping list for your liked recipes:*\n")
-                        await asyncio.sleep(0.5)
-                        grouped_foods_tasks = [
-                            FoodService.get_grouped_foods_by_recipe_id(uow, shopping_list.recipe_id)
-                            for shopping_list in get_user_shopping_list
-                        ]
-                        grouped_foods_results = await asyncio.gather(*grouped_foods_tasks)
-                        for shopping_list, grouped_foods in zip(get_user_shopping_list, grouped_foods_results):
-                            await bot_menu_service.send_shopping_list_recipe_after_like(
-                                whatsapp_number,
-                                grouped_foods,
-                                shopping_list.recipe_name
-                            )
-                            await asyncio.sleep(1)
+                        await user_session.set_shopping_list(get_user_shopping_list)
+                        await user_session.set_state(UserStates.SELECT_SHOPPING_LIST_MENU)
+                        await bot_menu_service.send_shopping_list_choice_recipes(whatsapp_number, get_user_shopping_list)
+
+
+                        # await bot_menu_service.send_message(whatsapp_number, "*Your shopping list for your liked recipes:*\n")
+                        # await asyncio.sleep(0.5)
+                        # grouped_foods_tasks = [
+                        #     FoodService.get_grouped_foods_by_recipe_id(uow, shopping_list.recipe_id)
+                        #     for shopping_list in get_user_shopping_list
+                        # ]
+                        # grouped_foods_results = await asyncio.gather(*grouped_foods_tasks)
+                        # for shopping_list, grouped_foods in zip(get_user_shopping_list, grouped_foods_results):
+                        #     await bot_menu_service.send_shopping_list_recipe_after_like(
+                        #         whatsapp_number,
+                        #         grouped_foods,
+                        #         shopping_list.recipe_name
+                        #     )
+                        #     await asyncio.sleep(1)
                     
-                    # await user_states.set(whatsapp_number, UserStates.MAIN_MENU)
-                    await user_session.set_state(UserStates.MAIN_MENU)
-                    await asyncio.sleep(1.5)
-                    await bot_menu_service.send_main_menu(whatsapp_number)
+                    # await user_session.set_state(UserStates.MAIN_MENU)
+                    # await asyncio.sleep(1.5)
+                    # await bot_menu_service.send_main_menu(whatsapp_number)
                 
                 case "5":
                     await bot_menu_service.send_message(
@@ -481,5 +488,66 @@ async def reply(
                     await bot_menu_service.send_message(
                         whatsapp_number, "❌ Invalid option. Please select necessary option *(from 1 to 0)*."
                     )
+        
+        case UserStates.SELECT_SHOPPING_LIST_MENU:
+            match user_message:
+                case _:
+                    try:
+                        user_message = int(user_message)
+                    except ValueError:
+                        await bot_menu_service.send_message(
+                            whatsapp_number, "❌ Invalid option. Please select necessary recipe with number *(from 1 to ...)*."
+                        )
+                        return
+                    
 
+                    if int(user_message) == 0:
+                        await user_session.set_state(UserStates.MAIN_MENU)
+                        await bot_menu_service.send_main_menu(whatsapp_number)
+                        return
+                    
+                    await user_session.set_state(UserStates.USER_WAITING_ANSWER)
+                    get_user_shopping_list = await user_session.get_shopping_list()
+
+                    if int(user_message) not in range(1, len(get_user_shopping_list) + 2):
+                        await bot_menu_service.send_message(
+                            whatsapp_number, f"❌ Invalid option. Please select necessary recipe *(from 1 to {len(get_user_shopping_list)})*."
+                        )
+                    
+                    elif int(user_message) == len(get_user_shopping_list) + 1:
+                        await bot_menu_service.send_message(whatsapp_number, "*Your shopping list for all your liked recipes:*\n")
+                        await asyncio.sleep(0.5)
+                        grouped_foods_tasks = [
+                            FoodService.get_grouped_foods_by_recipe_id(uow, shopping_list.recipe_id)
+                            for shopping_list in get_user_shopping_list
+                        ]
+                        grouped_foods_results = await asyncio.gather(*grouped_foods_tasks)
+                        for shopping_list, grouped_foods in zip(get_user_shopping_list, grouped_foods_results):
+                            await bot_menu_service.send_shopping_list_recipe_after_like(
+                                whatsapp_number,
+                                grouped_foods,
+                                shopping_list.recipe_name
+                            )
+                            await asyncio.sleep(1)
+                        
+                        await asyncio.sleep(1)
+                        await user_session.set_state(UserStates.MAIN_MENU)
+                        await bot_menu_service.send_main_menu(whatsapp_number)
+                        
+                    else:
+                        recipe = get_user_shopping_list[int(user_message) - 1]
+                        # await bot_menu_service.send_message(whatsapp_number, f"*Your shopping list for your liked recipe - {recipe.recipe_name}:*\n")
+                        # await asyncio.sleep(0.5)
+                        grouped_foods = await FoodService.get_grouped_foods_by_recipe_id(uow, recipe.recipe_id)
+                        await bot_menu_service.send_shopping_list_recipe_after_like(
+                                whatsapp_number,
+                                grouped_foods,
+                                recipe.recipe_name
+                            )
+                        await asyncio.sleep(1.5)
+                        await user_session.set_state(UserStates.MAIN_MENU)
+                        await bot_menu_service.send_main_menu(whatsapp_number)
+
+                    
+                        
     return ""

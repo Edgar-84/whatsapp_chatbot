@@ -8,6 +8,7 @@ class UserStates(str, Enum):
     MAIN_MENU = "main_menu"  # Main menu
     MY_RESULT_MENU = "my_result_menu"  # View My Results
     MY_RESTRICTIONS_MENU = "my_restrictions_menu"  # See My Restrictions
+    SELECT_SHOPPING_LIST_MENU = "select_shopping_list_menu"  # Select Shopping List Menu
 
     ASK_USER_WHANT_RECIPES = "ask_user_whant_recipes"  # Ask user want recipes
     CHOICE_MEAL_TYPE_MENU = "choice_meal_type_menu"  # After choose Meal Type
@@ -44,6 +45,7 @@ class UserSession:
                     "all_restriction_products": None,
                     "recipes_list_for_llm_research": None, # All recipes for LLM research without selected AI recipe
                     "llm_recipe_index": 0,
+                    "shopping_list": None,
                 }
 
     async def get(self, key: str):
@@ -137,7 +139,13 @@ class UserSession:
 
     async def set_llm_recipe_index(self, index: int):
         await self.set("llm_recipe_index", index)
-
+    
+    async def get_shopping_list(self):
+        return await self.get("shopping_list")
+    
+    async def set_shopping_list(self, shopping_list: list[dict]):
+        await self.set("shopping_list", shopping_list)
+    
     async def get_next_llm_recipe(self) -> Optional[dict]:
         recipe_list = await self.get_recipes_list_for_llm_research()
         if not recipe_list:
