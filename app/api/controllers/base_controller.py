@@ -371,12 +371,20 @@ async def reply(
                             # await user_session.set_state(UserStates.MAIN_MENU)
                             # await bot_menu_service.send_main_menu(whatsapp_number)
                             # return
+                        
+                        else:
+                            logger.warning("No recipes found by ingredients with FuzzyIngredientsRecipesService")
+                            await bot_menu_service.send_message(whatsapp_number, "We didn't find any recipes matching your *Include Ingredients* setting, please try specifying other products!")
+                            await asyncio.sleep(1.5)
+                            await user_session.set_state(UserStates.MAIN_MENU)
+                            await bot_menu_service.send_main_menu(whatsapp_number)
+                            return
                     
                     else:
                         final_answer_recipe = await rag_service.ask_recipe(user_recipe_preference)
                     
                     if final_answer_recipe is None:
-                        await bot_menu_service.send_message(whatsapp_number, "We didn't find any recipes matching your “Include Ingredients” setting, please try specifying other products!")
+                        await bot_menu_service.send_message(whatsapp_number, "We didn't find any recipes matching your *Include Ingredients* setting, please try specifying other products!")
                         await asyncio.sleep(1.5)
                         await user_session.set_state(UserStates.MAIN_MENU)
                         await bot_menu_service.send_main_menu(whatsapp_number)
