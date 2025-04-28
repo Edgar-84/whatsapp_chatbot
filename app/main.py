@@ -8,6 +8,8 @@ from app.utils.unitofwork import IUnitOfWork, UnitOfWork
 from app.utils.cache.ttl_cache import InMemoryUserCache
 # from app.utils.cache.user_session import UserSession, UserStates
 from app.services.google_upload_file_service import GoogleDriveService
+from app.services.recipe_finder import RecipeFinder
+from app.api.services.fuzzy_ingredients_recipes_service import FuzzyIngredientsRecipesService
 from app.wa_hooks.message_hooks import MessageClient
 from app.wa_hooks.bot_menu_service import BotMenuService
 from app.config.logger_settings import get_logger
@@ -18,6 +20,11 @@ from app.services.rag_service import AskRagForRecipe
 
 logger = get_logger("main")
 
+
+async def create_recipe_finder(uow: IUnitOfWork) -> RecipeFinder:
+    logger.info(f"Creating [RecipeFinder]...")
+    ingredients = await FuzzyIngredientsRecipesService().get_list_ingridients_he_en(uow) 
+    return RecipeFinder(ingredients)
 
 
 def create_google_driver_service() -> GoogleDriveService:
@@ -72,6 +79,7 @@ async def lifespan(app: FastAPI):
     sup_client = await supabase_client.get_client()
     app.state.rag_service = create_rag_service(sup_client)
     app.state.google_drive_service = create_google_driver_service()
+    app.state.recipe_finder = await create_recipe_finder(app.state.uow)
 
     yield
 

@@ -20,3 +20,7 @@ class RecipeRatingsServiceException(Exception):
 
 class ShoppingListServiceException(Exception):
     pass
+
+
+class FuzzyIngredientsRecipesServiceException(Exception):
+    pass

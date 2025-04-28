@@ -7,6 +7,7 @@ from app.wa_hooks.bot_menu_service import BotMenuService
 from app.config.logger_settings import get_logger
 from app.services.rag_service import AskRagForRecipe
 from app.services.google_upload_file_service import GoogleDriveService
+from app.services.recipe_finder import RecipeFinder
 
 
 logger = get_logger("dependencies")
@@ -36,9 +37,14 @@ def get_google_driver_service(request: Request) -> GoogleDriveService:
     return request.app.state.google_drive_service
 
 
+def get_recipe_finder(request: Request) -> RecipeFinder:
+    return request.app.state.recipe_finder
+
+
 BotMenuServiceDep = Annotated[BotMenuService, Depends(get_bot_menu_service)]
 UserStatesDep = Annotated[dict, Depends(get_user_states)]
 UserCacheDep = Annotated[InMemoryUserCache, Depends(get_user_cache)]
 UOWDep = Annotated[IUnitOfWork, Depends(get_unit_of_work)]
 AskRagForRecipeDep = Annotated[AskRagForRecipe, Depends(get_rag_service)]
 GoogleDriveServiceDep = Annotated[GoogleDriveService, Depends(get_google_driver_service)]
+RecipeFinderDep = Annotated[RecipeFinder, Depends(get_recipe_finder)]

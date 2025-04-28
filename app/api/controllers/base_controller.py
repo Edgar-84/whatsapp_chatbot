@@ -10,7 +10,8 @@ from app.dependencies import (
     UOWDep,
     UserCacheDep,
     AskRagForRecipeDep,
-    GoogleDriveServiceDep
+    GoogleDriveServiceDep,
+    RecipeFinderDep,
 )
 from app.api.dtos.recipe_user_preferences_dto import RecipeUserPreferencesDTO
 from app.api.dtos.user_dtos import UserDTO
@@ -24,6 +25,7 @@ from app.api.services.food_service import FoodService
 from app.api.services.shopping_list_service import ShoppingListService
 # from app.api.services.recipes_service import RecipesService
 from app.api.services.recipe_ratings_service import RecipeRatingsService
+from app.api.services.fuzzy_ingredients_recipes_service import FuzzyIngredientsRecipesService
 from app.config.logger_settings import get_logger
 
 
@@ -37,6 +39,7 @@ router = APIRouter(tags=["Base"])
 async def reply(
     request: Request,
     uow: UOWDep,
+    recipe_finder: RecipeFinderDep,
     bot_menu_service: BotMenuServiceDep,
     user_cache: UserCacheDep,
     rag_service: AskRagForRecipeDep,
@@ -255,14 +258,14 @@ async def reply(
                     # await user_states.set(whatsapp_number, UserStates.DIETARY_PREFERENCE_FILTER)
                     await user_session.set_state(UserStates.DIETARY_PREFERENCE_FILTER)
                     meal_type = {
-                        "1": "ארוחת בוקר", #"Breakfast",
-                        "2": "ארוחת צהריים", #"Lunch",
-                        "3": "ארוחת ערב", #"Dinner",
-                        "4": "נשנוש", #"Snack",
-                        "5": "תוספת", #"Side Dish",
-                        "6": "סלטים", #"Salads",
-                        "7": "קינוחים", #"Desserts",
-                        "8": "מרקים", #"Soups"
+                        "1": "Breakfast", #"ארוחת בוקר", #"Breakfast",
+                        "2": "Lunch", #"ארוחת צהריים", #"Lunch",
+                        "3": "Dinner", #"ארוחת ערב", #"Dinner",
+                        "4": "Snack", #"נשנוש", #"Snack",
+                        "5": "Side Dish", #"תוספת", #"Side Dish",
+                        "6": "Salads", #"סלטים", #"Salads",
+                        "7": "Desserts", #"קינוחים", #"Desserts",
+                        "8": "Soups" #"מרקים", #"Soups"
                     }[user_message]
                     # user_cache[whatsapp_number]["user_recipe_preference"].meal_type = meal_type
                     await user_session.update_user_recipe_preference(meal_type=meal_type)
@@ -281,10 +284,10 @@ async def reply(
             match user_message:
                 case "1" | "2" | "3" | "4" | "5":
                     dietary_preference = {
-                        "1": "צִמחוֹנִי", #"Vegetarian",
-                        "2": "טִבעוֹנִי", #"Vegan",
-                        "3": "חלבון גבוה", #"High Protein",
-                        "4": "דל פחמימות", #"Low Carb",
+                        "1": "Vegetarian", #"צִמחוֹנִי", #
+                        "2": "Vegan", #"טִבעוֹנִי", #"Vegan",
+                        "3": "High Protein", #"חלבון גבוה", #"High Protein",
+                        "4": "Low Carb", #"דל פחמימות", #"Low Carb",
                         "5": "No preference"
                     }[user_message]
                     
@@ -352,10 +355,34 @@ async def reply(
                     # Asc RAG for get recipes
                     user_recipe_preference = await user_session.get_user_recipe_preference()
                     # personalized_recipe, recipe_id, recipe_name = await rag_service.ask_recipe(user_recipe_preference) #user_cache[whatsapp_number]["user_recipe_preference"])
-                    final_answer_recipe = await rag_service.ask_recipe(user_recipe_preference)
-                    logger.info(f"Catch RECIPE_ID and update in cash: {final_answer_recipe.ai_result_recipe_id}")
-
+                    if user_recipe_preference.include_ingredients != "No preference":
+                        recipes_ingredients_list = await recipe_finder.find_recipes_by_ingredients(
+                            user_input=user_recipe_preference.include_ingredients,
+                            similarity_threshold=80
+                        )
+                        if recipes_ingredients_list:
+                            logger.info(f"Find recipes by ingredients count: {len(recipes_ingredients_list)}, {recipes_ingredients_list}")
+                            recipes_id = await FuzzyIngredientsRecipesService().get_recipes_by_ingredients(uow, recipes_ingredients_list)
+                            logger.info(f"Find recipes by ingredients count: {len(recipes_id)}, {recipes_id}")
+                            set_recipes_by_ingredients = list(set(recipes_id))
+                            logger.info(f"SET RECIPES count: {len(set_recipes_by_ingredients)}, {set_recipes_by_ingredients}")
+                            final_answer_recipe = await rag_service.ask_recipe(user_recipe_preference, set_recipes_by_ingredients)
+                            # # TODO for test
+                            # await user_session.set_state(UserStates.MAIN_MENU)
+                            # await bot_menu_service.send_main_menu(whatsapp_number)
+                            # return
                     
+                    else:
+                        final_answer_recipe = await rag_service.ask_recipe(user_recipe_preference)
+                    
+                    if final_answer_recipe is None:
+                        await bot_menu_service.send_message(whatsapp_number, "We didn't find any recipes matching your “Include Ingredients” setting, please try specifying other products!")
+                        await asyncio.sleep(1.5)
+                        await user_session.set_state(UserStates.MAIN_MENU)
+                        await bot_menu_service.send_main_menu(whatsapp_number)
+                        return
+                    
+                    logger.info(f"Catch RECIPE_ID and update in cash: {final_answer_recipe.ai_result_recipe_id}")
                     await user_session.set_get_recipe_id(int(final_answer_recipe.ai_result_recipe_id))
                     await user_session.set_get_recipe_name(final_answer_recipe.ai_result_recipe_name)
                     logger.info(f"Before filter: {final_answer_recipe.recipes_after_filter}")

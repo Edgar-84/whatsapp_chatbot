@@ -158,18 +158,24 @@ class AskRagForRecipe(RagService):
         recipes = response.data  # This is a list of dicts
         return recipes
 
-    async def ask_recipe(self, client_response: RecipeUserPreferencesDTO) -> AskRecipeAnswerDTO: #tuple[list[str, str], int, str]:
+    async def ask_recipe(self, client_response: RecipeUserPreferencesDTO, recipes_id: list[int] = None) -> AskRecipeAnswerDTO: #tuple[list[str, str], int, str]:
         final_answer = AskRecipeAnswerDTO()
 
         client_response = client_response.model_dump()
         logger.info(f" ===> Client request for RAG: {client_response}")
-        query_embedding = await self._get_query_embedding(client_response)
-        similar_recipes = await self._search_similar_embeddings(
-            query_embedding=query_embedding,
-            match_count=10
-        )
-    
-        recipe_ids = [int(r["recipe_id"]) for r in similar_recipes]
+        if recipes_id is None:
+            query_embedding = await self._get_query_embedding(client_response)
+            similar_recipes = await self._search_similar_embeddings(
+                query_embedding=query_embedding,
+                match_count=15
+            )
+            recipe_ids = [int(r["recipe_id"]) for r in similar_recipes]
+            logger.info(f"Recipes ID from RAG: {recipe_ids}")
+
+        else:
+            logger.info(f"Recipes ID from fuzzy: {recipes_id}")
+            recipe_ids = recipes_id
+        
         final_answer.recipes_id_from_rag = recipe_ids # Add recipes id from RAG
         recipes = await self._load_recipes_from_db(recipe_ids)
 
@@ -177,7 +183,7 @@ class AskRagForRecipe(RagService):
         disliked_recipes_id = client_response.get("disliked_recipes_id", [])
         logger.info(f"Banned foods: {banned_foods}")
         logger.info(f"Disliked recipes: {disliked_recipes_id}")
-        logger.info(f"Recipes: {recipes[:10]}")
+        # logger.info(f"Recipes: {recipes[:10]}")
         filtered_recipes, filtered_disliked_id, filtered_banned_id = self._filter_recipes(recipes, banned_foods, disliked_recipes_id)
         for i in filtered_recipes:
             logger.debug(f"Filtered recipe {i}")
@@ -188,6 +194,10 @@ class AskRagForRecipe(RagService):
         final_answer.filtered_restrictions_recipes_id = filtered_banned_id
 
         logger.info(f"Filtered recipes count: {len(filtered_recipes)}")
+        if len(filtered_recipes) == 0:
+            logger.warning(f"Filtered all recipes!")
+            return None
+        
         result_after_asc_ai, recipe_id, prompt_for_llm = await self._ask_openai_for_best_recipe(filtered_recipes, client_response)
         final_answer.ai_result_recomendation = result_after_asc_ai
         final_answer.ai_result_recipe_id = recipe_id
@@ -240,7 +250,7 @@ class AskRagForRecipe(RagService):
         """
         Search for similar embeddings in Supabase using cosine similarity
         """
-        response_data = await self._supabase_client.rpc("match_recipes",{
+        response_data = await self._supabase_client.rpc("match_recipes", {  #"match_recipes" "match_recipes_ingridients"  match_ingridients_embeddings,{
                 "query_embedding": query_embedding,
                 "match_count": match_count
             }).execute()
@@ -288,13 +298,31 @@ class AskRagForRecipe(RagService):
 
         return filtered, filtered_disliked, filtered_banned
 
-    async def _get_query_embedding(self, client_response: dict[str, str]) -> list[float]:
+    async def _get_query_embedding(self, client_response: dict) -> list[float]:
+        """
+        Get query embedding from client response
+        """
+
+        meal_type = client_response.get("meal_type", "No preference")
+        dietary_pref=client_response.get("dietary_preference", "No preference")
+        include_ingredients = client_response.get("include_ingredients", "")
+        additional_notes = client_response.get("additional_notes", "")
+        logger.info(f"meal_type: {meal_type},\ndietary_pref: {dietary_pref},\ninclude_ingredients: {include_ingredients},\nadditional_notes: {additional_notes}")
+
         query_text = self.__build_query_text(
-            meal_type=client_response.get("meal_type", "No preference"),
-            dietary_pref=client_response.get("dietary_pref", "No preference"),
-            include_ingredients=client_response.get("include_ingredients", ""),
-            additional_notes=client_response.get("additional_notes", ""),
+            meal_type=meal_type,
+            dietary_pref=dietary_pref,
+            include_ingredients=include_ingredients,
+            additional_notes=additional_notes,
+            language="en",
         )
+
+        # query_text = self.__build_query_text(
+        #     meal_type=client_response.meal_type,
+        #     dietary_pref=client_response.dietary_preference,
+        #     include_ingredients=client_response.include_ingredients,
+        #     additional_notes=client_response.additional_notes,
+        # )
         logger.info(f"Query text for embeding: {query_text}")
         result = await self.get_embedding(query_text)
         # logger.debug(f"Embeding for query: {result}")
@@ -333,12 +361,13 @@ class AskRagForRecipe(RagService):
 
         return filtered_recipes
 
+    @staticmethod
     def __build_query_text(
         meal_type: str,
         dietary_pref: str,
         include_ingredients: str,
         additional_notes: str,
-        language: str = "he",
+        language: str = "en",
     ) -> str:
             """
             Build enriched query text for embedding search.
@@ -348,19 +377,24 @@ class AskRagForRecipe(RagService):
                 parts = []
 
                 if include_ingredients:
-                    parts.append(
-                        f"אני מחפש מתכון שמבוסס על המרכיבים הבאים: {include_ingredients}. "
-                        f"המרכיבים האלו חשובים מאוד וחייבים להיות חלק מהמתכון. מתכונים שלא כוללים אותם – לא רלוונטיים עבורי."
-                    )
+                    parts.append(f"{include_ingredients}")
+                    # parts.append(f"אני מחפש מתכון שמבוסס על המרכיבים הבאים: {include_ingredients}. ")
+                    #     f"המרכיבים האלו חשובים מאוד וחייבים להיות חלק מהמתכון. מתכונים שלא כוללים אותם – לא רלוונטיים עבורי."
+                    # )[288, 244, 78, 413, 77, 269, 487, 450, 153, 382]
 
-                if meal_type and meal_type.lower() != "no preference":
-                    parts.append(f"סוג הארוחה הוא: {meal_type}.")
+                # if meal_type and meal_type.lower() != "no preference":
+                #     # parts.append(meal_type)
+                #     parts.append(f"סוג הארוחה הוא: {meal_type}.")
 
-                if dietary_pref and dietary_pref.lower() != "no preference":
-                    parts.append(f"העדפות תזונתיות: {dietary_pref}.")
+                # if dietary_pref and dietary_pref.lower() != "no preference":
+                #     # parts.append(dietary_pref)
+                #     parts.append(f"העדפות תזונתיות: {dietary_pref}.")
 
-                if additional_notes:
-                    parts.append(f"הערות נוספות: {additional_notes}.")
+                # if additional_notes:
+                #     additional_notes = additional_notes.strip()
+                #     parts.append(f"הערות נוספות: {additional_notes}.")
+                #     # parts.append(additional_notes)[323, 219, 516, 396, 220, 313, 159, 18, 291, 103]
+
 
                 return "\n".join(parts)
 
@@ -368,21 +402,35 @@ class AskRagForRecipe(RagService):
             parts = []
 
             if include_ingredients:
-                parts.append(
-                    f"I am looking for a recipe that is based on the following ingredients: {include_ingredients}. "
-                    f"These ingredients are essential and must be part of the recipe. Recipes without them are not relevant."
-                )
+                #Looking for recipes that include these ingredients: 
+                parts.append(f"Ingredients: {include_ingredients}")
+                # parts.append(f"Looking for recipes that include these ingredients: {include_ingredients}")
 
             if meal_type and meal_type.lower() != "no preference":
-                parts.append(f"The meal type should be: {meal_type}.")
+                parts.append(f"Meal Type: {meal_type}")
 
             if dietary_pref and dietary_pref.lower() != "no preference":
-                parts.append(f"Dietary preference: {dietary_pref}.")
-
-            if additional_notes:
-                parts.append(f"Additional notes: {additional_notes}.")
+                parts.append(f"Dietary Preferences: {dietary_pref}")
 
             return "\n".join(parts)
+
+
+            # if include_ingredients:
+            #     parts.append(
+            #         f"I am looking for a recipe that is based on the following ingredients: {include_ingredients}. "
+            #         f"These ingredients are essential and must be part of the recipe. Recipes without them are not relevant."
+            #     )
+
+            # if meal_type and meal_type.lower() != "no preference":
+            #     parts.append(f"The meal type should be: {meal_type}.")
+
+            # if dietary_pref and dietary_pref.lower() != "no preference":
+            #     parts.append(f"Dietary preference: {dietary_pref}.")
+
+            # if additional_notes:
+            #     parts.append(f"Additional notes: {additional_notes}.")
+
+            # return "\n".join(parts)
 
     # @staticmethod
     # def __build_query_text(
