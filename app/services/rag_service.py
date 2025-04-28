@@ -198,7 +198,7 @@ class AskRagForRecipe(RagService):
             logger.warning(f"Filtered all recipes!")
             return None
         
-        result_after_asc_ai, recipe_id, prompt_for_llm = await self._ask_openai_for_best_recipe(filtered_recipes, client_response)
+        result_after_asc_ai, recipe_id, prompt_for_llm = await self._ask_openai_for_best_recipe(filtered_recipes[:10], client_response)
         final_answer.ai_result_recomendation = result_after_asc_ai
         final_answer.ai_result_recipe_id = recipe_id
         final_answer.prompt_for_llm = prompt_for_llm
