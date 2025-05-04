@@ -16,11 +16,13 @@ from app.config.project_config import project_settings
 # SCOPES = ['https://www.googleapis.com/auth/drive.file']
 SCOPES = [
     'https://www.googleapis.com/auth/documents',
-    'https://www.googleapis.com/auth/drive'
+    'https://www.googleapis.com/auth/drive',
+    'https://www.googleapis.com/auth/spreadsheets'
 ]
 
 CREDENTIALS_FILE = project_settings.GOOGLE_CREDENTIAL_JSON_PATH
 TOKEN_PICKLE = project_settings.GOOGLE_TOKEN_PICKLE_PATH
+SPREADSHEET_ID = project_settings.GOOGLE_SPREADSHEET_ID
 
 
 class GoogleDriveService:
@@ -28,7 +30,24 @@ class GoogleDriveService:
         self.creds = self._get_service_account_credentials()#self._get_user_credentials()
         self.service = build('drive', 'v3', credentials=self.creds)
         self.docs_service = build('docs', 'v1', credentials=self.creds)
+        self.sheets_service = build('sheets', 'v4', credentials=self.creds)
         self.drive_service = self.service
+    
+    async def append_row_to_sheet(self, user_id: str, phone: str, message: str):
+        now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        values = [[user_id, phone, message, now]]
+        body = {
+            'values': values
+        }
+        result = self.sheets_service.spreadsheets().values().append(
+            spreadsheetId=SPREADSHEET_ID,
+            range='Sheet1!A1',
+            valueInputOption='USER_ENTERED',
+            insertDataOption='INSERT_ROWS',
+            body=body
+        ).execute()
+
+        return result
 
     @staticmethod
     @lru_cache(maxsize=1)

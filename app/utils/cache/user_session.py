@@ -2,10 +2,19 @@ from typing import Optional
 from enum import Enum
 from app.utils.cache.abstract_cache import AbstractUserCache
 from app.api.dtos.recipe_user_preferences_dto import RecipeUserPreferencesDTO
+from app.api.dtos.recipes_view_data_dtos import RecipesViewDataDTO
 
 class UserStates(str, Enum):
     AWAITING_VERIFICATION = "awaiting_verification"  # Waiting for verification
     MAIN_MENU = "main_menu"  # Main menu
+    SELECT_DIETARY_PREFERENCES = "select_dietary_preferences"  # Select Dietary Preferences
+    SELECT_RECIPE_TYPE = "select_recipe_type"  # Select Recipe Type
+    PREPARING_WEEKLY_MENU = "preparing_weekly_menu"  # Preparing Weekly Menu
+    VIEW_RECIPE_FROM_MEAL_PLAN = "view_recipe_from_meal_plan"  # View Recipe From Meal Plan
+    ASK_SUPPORT = "ask_support"  # Ask Support
+
+
+    # OLD states
     MY_RESULT_MENU = "my_result_menu"  # View My Results
     MY_RESTRICTIONS_MENU = "my_restrictions_menu"  # See My Restrictions
     SELECT_SHOPPING_LIST_MENU = "select_shopping_list_menu"  # Select Shopping List Menu
@@ -46,6 +55,7 @@ class UserSession:
                     "recipes_list_for_llm_research": None, # All recipes for LLM research without selected AI recipe
                     "llm_recipe_index": 0,
                     "shopping_list": None,
+                    "weekly_plan_recipes_dto": None,
                 }
 
     async def get(self, key: str):
@@ -165,6 +175,12 @@ class UserSession:
             #     return recipe
 
         return None  # if reached the end of the list
+
+    async def get_weekly_plan_recipes_dto(self):
+        return await self.get("weekly_plan_recipes_dto")
+    
+    async def set_weekly_plan_recipes_dto(self, weekly_plan_recipes_dto: list[RecipesViewDataDTO]):
+        await self.set("weekly_plan_recipes_dto", weekly_plan_recipes_dto)
     
     async def delete(self):
         self._data = None

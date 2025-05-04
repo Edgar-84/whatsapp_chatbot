@@ -8,6 +8,7 @@ class UserDTO(Base):
     id: int
     client_id: int
     phone: str
+    user_name: Optional[str] = None
     verified: bool
     pdf_result_link: Optional[str] = None
     ascii_result_link: Optional[str] = None

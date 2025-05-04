@@ -22,5 +22,6 @@ class ProjectSettings(BaseSettings):
     GOOGLE_TOKEN_PICKLE_PATH: str = os.path.join(BASE_DIR, "token.pickle")
     PROMPT_DIR: str = os.path.join(BASE_DIR, "prompts")
     GOOGLE_SERVICE_ACCOUNT: str = config("GOOGLE_SERVICE_ACCOUNT")
+    GOOGLE_SPREADSHEET_ID: str = config("GOOGLE_SPREADSHEET_ID")
 
 project_settings = ProjectSettings()
