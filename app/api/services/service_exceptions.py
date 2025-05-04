@@ -24,3 +24,6 @@ class ShoppingListServiceException(Exception):
 
 class FuzzyIngredientsRecipesServiceException(Exception):
     pass
+
+class RecipesViewDataServiceException(Exception):
+    pass

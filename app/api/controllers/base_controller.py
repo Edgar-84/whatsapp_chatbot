@@ -18,14 +18,14 @@ from app.api.dtos.user_dtos import UserDTO
 from app.api.dtos.food_dtos import FoodDTO
 from app.api.dtos.recipe_ratings_dtos import CreateRecipeRatingDTO
 from app.api.dtos.shopping_list_dtos import CreateShoppingListDTO, ShoppingListDTO
-# from app.api.dtos.recipes_dtos import RecipeDTO
+from app.api.dtos.recipes_view_data_dtos import RecipesViewDataDTO
 
 from app.api.services.user_service import UserService
 from app.api.services.food_service import FoodService
 from app.api.services.shopping_list_service import ShoppingListService
-# from app.api.services.recipes_service import RecipesService
 from app.api.services.recipe_ratings_service import RecipeRatingsService
 from app.api.services.fuzzy_ingredients_recipes_service import FuzzyIngredientsRecipesService
+from app.api.services.recipes_view_data_service import RecipesViewDataService
 from app.config.logger_settings import get_logger
 
 
@@ -34,6 +34,20 @@ logger = get_logger("base_controller")
 
 router = APIRouter(tags=["Base"])
 
+# - Breakfast
+# - Lunch
+# - Dinner
+# - Snack
+
+RECIPES_ID = [
+    (25, 8, 17, 6),
+    (38, 12, 18, 9),
+    (39, 15, 24, 10),
+    (40, 16, 26, 19),
+    (42, 20, 27, 23),
+    (43, 21, 28, 32),
+    (44, 22, 29, 58)
+]
 
 @router.post("/message", response_model=None)
 async def reply(
@@ -69,8 +83,10 @@ async def reply(
         if user.verified:
             logger.info(f"User {whatsapp_number} is already verified in DB.")
             await user_session.set_user(user)
-            await user_session.set_state(UserStates.MAIN_MENU)
-            await bot_menu_service.send_main_menu(whatsapp_number)
+            await user_session.set_state(UserStates.SELECT_DIETARY_PREFERENCES)
+            await bot_menu_service.send_main_menu(whatsapp_number, user.user_name, user.pdf_result_link)
+            await asyncio.sleep(1.5)
+            await bot_menu_service.send_select_dietary_preferences_menu(whatsapp_number)
             return ""
 
         else:
@@ -99,14 +115,231 @@ async def reply(
         logger.info(f"User {whatsapp_number} verified successfully.")
         updated_user = await UserService().verify_user(uow, verified_user.id)
         await user_session.set_user(updated_user)
-        await user_session.set_state(UserStates.MAIN_MENU)
+        await user_session.set_state(UserStates.SELECT_DIETARY_PREFERENCES)
         await bot_menu_service.send_you_verified_message(whatsapp_number)
-        await bot_menu_service.send_main_menu(whatsapp_number)
+        await asyncio.sleep(1.5)
+        await bot_menu_service.send_main_menu(whatsapp_number, updated_user.user_name, updated_user.pdf_result_link)
+        await asyncio.sleep(1.5)
+        await bot_menu_service.send_select_dietary_preferences_menu(whatsapp_number)
         return ""
 
 
     # Menu for verified user
     match state:
+        case UserStates.SELECT_DIETARY_PREFERENCES:
+            match user_message:
+                case "1" | "2" | "3":
+                    if user_message == "1":
+                        dietary_preference = "vegetarian"
+                    elif user_message == "2":
+                        dietary_preference = "vegan"
+                    elif user_message == "3":
+                        dietary_preference = "no_preference"
+
+                    logger.info(f"Catch dietary preference: {dietary_preference}")
+                    await bot_menu_service.send_select_recipe_type_menu(whatsapp_number)
+                    await user_session.set_state(UserStates.SELECT_RECIPE_TYPE)
+                
+                case _:
+                    await bot_menu_service.send_message(
+                        whatsapp_number, "❌ Invalid option. Please choose from the menu:"
+                    )
+                    await asyncio.sleep(1.5)
+                    await bot_menu_service.send_select_dietary_preferences_menu(whatsapp_number)
+
+        case UserStates.SELECT_RECIPE_TYPE:
+            match user_message:
+                case "1" | "2" | "3":
+                    if user_message == "1":
+                        recipe_type = "quick & easy"
+                    elif user_message == "2":
+                        recipe_type = "medium (up to 20 min)"
+                    elif user_message == "3":
+                        recipe_type = "no_preference"
+
+                    logger.info(f"Catch recipe type: {recipe_type}")
+                    DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+                    MEAL_TYPES = ["Breakfast", "Lunch", "Dinner", "Snack"]
+                    # await bot_menu_service.send_asc_quality_result_recipes_menu(whatsapp_number)
+                    await bot_menu_service.send_message(whatsapp_number, "Preparing a weekly plan for you ...")
+                    recipe_id_list = []
+                    for data in RECIPES_ID:
+                        recipe_id_list.extend(data)
+
+                    recipes_data = await RecipesViewDataService().get_recipes_view_data_by_list_id(uow, recipe_id_list)
+                    await user_session.set_weekly_plan_recipes_dto(recipes_data)
+                    # chunks = list(zip(*[iter(recipes_data)] * 4))
+                    result_lines = []
+                    result_lines.append(f"Your Weekly Meal Plan ({len(recipes_data)} Meals)\n")
+
+                    index = 1
+                    for day_index, day_name in enumerate(DAY_NAMES):
+                        result_lines.append(f"{day_name}")
+                        for meal_index, meal_type in enumerate(MEAL_TYPES):
+                            recipe = recipes_data[day_index * 4 + meal_index].name
+                            result_lines.append(f"{index}. {meal_type} - {recipe}")
+                            index += 1
+
+                        result_lines.append("")
+
+                    final_message = "\n".join(result_lines)
+                    await bot_menu_service.send_message(whatsapp_number, final_message)
+                    await asyncio.sleep(1.5)
+                    await bot_menu_service.send_next_choice_menu(whatsapp_number)
+                    await user_session.set_state(UserStates.PREPARING_WEEKLY_MENU)
+
+                case _:
+                    await bot_menu_service.send_message(
+                        whatsapp_number, "❌ Invalid option. Please choose from the menu:"
+                    )
+                    await asyncio.sleep(1.5)
+                    await bot_menu_service.send_select_recipe_type_menu(whatsapp_number)
+
+        case UserStates.PREPARING_WEEKLY_MENU:
+            match user_message:
+                case "1":
+                    # View a recipe from the meal plan
+                    await user_session.set_state(UserStates.VIEW_RECIPE_FROM_MEAL_PLAN)
+                    await bot_menu_service.send_view_recipe_from_meal_plan_menu(
+                        whatsapp_number
+                    )
+
+                case "2":
+                    # Get the full weekly shopping list
+                    await bot_menu_service.send_message(
+                        whatsapp_number, "Not available yet - under development!"
+                    )
+                    await asyncio.sleep(1.5)
+                    await bot_menu_service.send_next_choice_menu(whatsapp_number)
+
+                case "3":
+                    # Talk to our support team
+                    await bot_menu_service.send_asc_message_for_support(whatsapp_number)
+                    await user_session.set_state(UserStates.ASK_SUPPORT)
+                
+                case "4":
+                    # Get helpful tips
+                    await bot_menu_service.send_message(
+                        whatsapp_number, "Not available yet - under development!"
+                    )
+                    await asyncio.sleep(1.5)
+                    await bot_menu_service.send_next_choice_menu(whatsapp_number)
+                
+                case "5":
+                    # See my food restriction list
+                    await user_session.set_state(UserStates.USER_WAITING_ANSWER)
+                    await bot_menu_service.send_wait_message(whatsapp_number)
+                    ascii_result_link = user.ascii_result_link
+
+                    high_sensitivity_foods = await user_session.get_high_sensitivity_foods()
+                    low_sensitivity_foods = await user_session.get_low_sensitivity_foods()
+
+                    if high_sensitivity_foods is not None and low_sensitivity_foods is not None:
+                        logger.info(f" === Find Restrictions in User cache! ===")
+
+                        high_sensitivity_foods_names = [food.name for food in high_sensitivity_foods]
+                        low_sensitivity_foods_names = [food.name for food in low_sensitivity_foods]
+                        await bot_menu_service.send_my_restrictions_menu(
+                            whatsapp_number,
+                            high_sensitivity_foods_names,
+                            low_sensitivity_foods_names
+                        )
+
+                        await user_session.set_state(UserStates.PREPARING_WEEKLY_MENU)
+                        await asyncio.sleep(1.5)
+                        await bot_menu_service.send_next_choice_menu(whatsapp_number)
+
+                    elif ascii_result_link:
+                        # TODO create util for work with getting restrictions info
+                        file_id = ascii_result_link.split("/d/")[1].split("/view")[0]
+                        logger.info(f"File ID: {file_id}")
+                        high_sensitivity_foods_codes, low_sensitivity_foods_codes = await ASCIIService.process_csv(file_id)
+                        await user_session.set_restrictions_lab_codes(high_sensitivity_foods_codes + low_sensitivity_foods_codes)
+                        # TODO create one request instead of two, and filter results on hight and low foods
+                        high_sensitivity_foods: list[FoodDTO] = await FoodService().get_foods_by_list_lab_codes(uow, high_sensitivity_foods_codes)
+                        low_sensitivity_foods: list[FoodDTO] = await FoodService().get_foods_by_list_lab_codes(uow, low_sensitivity_foods_codes)
+                        await user_session.set_high_sensitivity_foods(high_sensitivity_foods)
+                        await user_session.set_low_sensitivity_foods(low_sensitivity_foods)
+                        await user_session.set_all_restriction_products(high_sensitivity_foods + low_sensitivity_foods)
+
+                        high_sensitivity_foods_names = [food.name for food in high_sensitivity_foods]
+                        low_sensitivity_foods_names = [food.name for food in low_sensitivity_foods]
+                        logger.info(f"High sensitivity foods: {high_sensitivity_foods_names}")
+                        logger.info(f"Low sensitivity foods: {low_sensitivity_foods_names}")
+                        await bot_menu_service.send_my_restrictions_menu(whatsapp_number, high_sensitivity_foods_names, low_sensitivity_foods_names)
+                        await user_session.set_state(UserStates.PREPARING_WEEKLY_MENU)
+                        await asyncio.sleep(1.5)
+                        await bot_menu_service.send_next_choice_menu(whatsapp_number)
+
+                    else:
+                        await bot_menu_service.send_my_restrictions_menu(whatsapp_number)
+                        await user_session.set_state(UserStates.PREPARING_WEEKLY_MENU)
+                        await asyncio.sleep(1.5)
+                        await bot_menu_service.send_next_choice_menu(whatsapp_number)
+
+                case "6":
+                    await user_session.set_state(UserStates.SELECT_DIETARY_PREFERENCES)
+                    await bot_menu_service.send_select_dietary_preferences_menu(whatsapp_number)
+
+                case _:
+                    await bot_menu_service.send_message(
+                        whatsapp_number, "❌ Invalid option. Please choose from the menu:"
+                    )
+                    await asyncio.sleep(1.5)
+                    await bot_menu_service.send_select_recipe_type_menu(whatsapp_number)
+
+        case UserStates.VIEW_RECIPE_FROM_MEAL_PLAN:
+            match user_message:
+                case "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | "10" | "11" | "12" | "13" | "14" | "15" | "16" | "17" | "18" | "19" | "20" | "21" | "22" | "23" | "24" | "25" | "26" | "27" | "28":
+                    index_recipe = int(user_message) - 1
+                    weekly_recipes = await user_session.get_weekly_plan_recipes_dto()
+                    recipe: RecipesViewDataDTO = weekly_recipes[index_recipe]
+
+                    name = recipe.name if recipe.name is not None else ""
+                    sub_title = recipe.sub_title if recipe.sub_title is not None else ""
+                    meal_type = recipe.meal_type if recipe.meal_type is not None else ""
+                    minutes = recipe.minutes if recipe.minutes is not None else ""
+                    preparation_method = recipe.preparation_method if recipe.preparation_method is not None else ""
+                    ingredients = recipe.ingredients if recipe.ingredients is not None else ""
+                    nut_recommend = recipe.nut_recommend if recipe.nut_recommend is not None else ""
+                    comment = recipe.comment if recipe.comment is not None else ""
+
+                    recipe_details = (
+                        f"*Name:* {name}\n"
+                        f"*Sub title:* {sub_title}\n"
+                        f"*Meal type:* {meal_type}\n"
+                        f"*Minutes:* {minutes}\n"
+                        f"*Preparation Method:*\n{preparation_method}\n"
+                        f"*Ingredients:*\n{ingredients}\n"
+                        f"*Nut recommend:*\n{nut_recommend}\n"
+                        f"*Comment:*\n{comment}\n\n"
+                    )
+                    await bot_menu_service.send_message(whatsapp_number, recipe_details)
+                    await user_session.set_state(UserStates.PREPARING_WEEKLY_MENU)
+                    await bot_menu_service.send_next_choice_menu(whatsapp_number)
+
+                case _:
+                    await bot_menu_service.send_message(
+                        whatsapp_number, "❌ Invalid option. Please choose from the menu:"
+                    )
+                    await asyncio.sleep(1.5)
+                    await bot_menu_service.send_view_recipe_from_meal_plan_menu(whatsapp_number)
+
+        case UserStates.ASK_SUPPORT:
+            match user_message:
+                case _:
+
+                    await google_drive_service.append_row_to_sheet(
+                        user_id=user.id,
+                        phone=user.phone,
+                        message=user_message,
+                    )
+
+                    await bot_menu_service.send_message(whatsapp_number, "Thank you for your message! Our support team will get back to you as soon as possible.")
+                    await asyncio.sleep(1.5)
+                    await user_session.set_state(UserStates.PREPARING_WEEKLY_MENU)
+                    await bot_menu_service.send_next_choice_menu(whatsapp_number)
+                    
         case UserStates.MAIN_MENU:
             match user_message:
                 case "1":

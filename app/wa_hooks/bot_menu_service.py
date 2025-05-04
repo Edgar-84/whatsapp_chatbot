@@ -47,19 +47,70 @@ class BotMenuService:
     async def send_invalid_client_id_message(self, whatsapp_number: str):
         await self.message_client.send_message(whatsapp_number, "❌ Invalid Client ID. Please try again.")
 
-    async def send_main_menu(self, whatsapp_number: str):
+    async def send_main_menu(self, whatsapp_number: str, user_name: str, result_link: str):
+        # menu_text = (
+        #     "*Main Menu:*\n\n"
+        #     "1️⃣ View My Results\n"
+        #     "2️⃣ See My Restrictions\n"
+        #     "3️⃣ Personalized Recipes\n"
+        #     "4️⃣ Generate Shopping List (from liked recipes)\n"
+        #     "5️⃣ Help / Support\n\n"
+        #     # "0️⃣ 🔝 Main Menu"
+        # )
         menu_text = (
-            "*Main Menu:*\n\n"
-            "1️⃣ View My Results\n"
-            "2️⃣ See My Restrictions\n"
-            "3️⃣ Personalized Recipes\n"
-            "4️⃣ Generate Shopping List (from liked recipes)\n"
-            "5️⃣ Help / Support\n\n"
-            # "0️⃣ 🔝 Main Menu"
+            f"Hi {user_name}, I’m your food intolerance assistant.\n"
+            "Let's plan your week with recipes and a shopping list so it's easier to succeed.\n"
+            f"Here's your test result link: {result_link}\n"
+            "Please answer two quick questions:"
+        )
+        await self.message_client.send_message(whatsapp_number, menu_text)
+
+    async def send_select_dietary_preferences_menu(self, whastapp_number: str):
+        menu_text = (
+            "*Select Dietary Preferences:*\n\n"
+            "1️⃣ Vegetarian\n"
+            "2️⃣ Vegan\n"
+            "3️⃣ No preference\n"
+        )
+        await self.message_client.send_message(whastapp_number, menu_text)
+    
+    async def send_select_recipe_type_menu(self, whastapp_number: str):
+        menu_text = (
+            "*Select Recipe Type:*\n\n"
+            "1️⃣ Quick & Easy\n"
+            "2️⃣ Medium (up to 20 min)\n"
+            "3️⃣ No preference\n"
+        )
+        await self.message_client.send_message(whastapp_number, menu_text)
+
+    async def send_next_choice_menu(self, whastapp_number: str):
+        menu_text = (
+            "*What would you like to do next?*\n"
+            "*Please type or tap one of the options below:*\n\n"
+            "1️⃣ View a recipe from the meal plan\n"
+            "2️⃣ Get the full weekly shopping list\n"
+            "3️⃣ Talk to our support team\n"
+            "4️⃣ Get helpful tips\n"
+            "5️⃣ See my food restriction list\n"
+            "6️⃣ Plan a new week\n\n"
+        )
+        await self.message_client.send_message(whastapp_number, menu_text)
+
+    async def send_view_recipe_from_meal_plan_menu(self, whastapp_number: str):
+        menu_text = (
+            "Great!\n"
+            "Please type the number of the meal you'd like to view *(1-28)*.\n"
+            "For example:\n\n"
+            "2 to view Monday Lunch\n\n"
+        )
+        await self.message_client.send_message(whastapp_number, menu_text)
+
+    async def send_asc_message_for_support(self, whatsapp_number: str):
+        menu_text = (
+            "*Please describe the problem, we will review your message and get back with an answer:*\n\n"
         )
         await self.message_client.send_message(whatsapp_number, menu_text)
     
-
     async def send_my_results_menu(self, whatsapp_number: str, result_link: str):
         menu_text = (
             f"*View My Results*\n\n"
